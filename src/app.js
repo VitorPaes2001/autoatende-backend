@@ -42,7 +42,28 @@ app.use('/api/attendance', require('./routes/attendance.routes'));
 app.use('/api/metrics', require('./routes/metrics.routes'));
 
 // 🔹 Healthcheck
+console.log('Mounting /api/health routes...');
 app.use('/api/health', require('./routes/health.routes'));
+
+// 🔹 Debug Routes (TEMPORARY)
+app.get('/__debug/routes', (req, res) => {
+  const routes = [];
+  app._router.stack.forEach((middleware) => {
+    if (middleware.route) { // routes registered directly on the app
+      routes.push({
+        path: middleware.route.path,
+        methods: Object.keys(middleware.route.methods)
+      });
+    } else if (middleware.name === 'router') { // router middleware 
+      // This is a bit simplistic, but good enough for top-level mounts
+      routes.push({
+        name: middleware.name,
+        regexp: middleware.regexp.toString()
+      });
+    }
+  });
+  res.json(routes);
+});
 
 // 🔹 Rota de teste do Sentry
 app.get('/sentry-test', () => {
