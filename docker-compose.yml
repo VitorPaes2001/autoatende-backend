@@ -1,0 +1,75 @@
+version: "3.9"
+
+services:
+  whatsapp-redis:
+    image: redis:7-alpine
+    container_name: whatsapp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - whatsapp-net
+
+  whatsapp-api:
+    build: .
+    container_name: whatsapp-api
+    restart: unless-stopped
+
+    depends_on:
+      - whatsapp-redis
+
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+
+      # 🔑 SUPABASE
+      SUPABASE_URL: https://xtftxgfqfupsxhfadax.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+
+      # 🔴 REDIS
+      REDIS_HOST: whatsapp-redis
+      REDIS_PORT: 6379
+
+      # 🌐 API
+      PORT: 3000
+
+    ports:
+      - "3000:3000"
+
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+    networks:
+      - whatsapp-net
+
+  whatsapp-nginx:
+    image: nginx:alpine
+    container_name: whatsapp-nginx
+    restart: unless-stopped
+
+    depends_on:
+      - whatsapp-api
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+    networks:
+      - whatsapp-net
+
+volumes:
+  redis_data:
+
+networks:
+  whatsapp-net:
+    driver: bridge
+

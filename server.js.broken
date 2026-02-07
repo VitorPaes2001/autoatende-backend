@@ -1,0 +1,71 @@
+require('dotenv').config();
+const express = require('express');
+const errorHandler = require('./middlewares/errorHandler');
+const requestLogger = require('./middlewares/requestLogger');
+const logger = require('./utils/logger');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const cors = require('cors');
+
+app.use(cors({
+  origin: ["https://autoatendeai.com.br", "https://lovable.dev"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+app.options("*", cors());
+
+app.use((req, res, next) => {
+  if (req.originalUrl === '/billing/webhook') return next();
+  return express.json()(req, res, next);
+});
+
+// Logger simples (console)
+app.use(requestLogger);
+
+// Rotas
+const routes = [
+  { path: '/usage', route: require('./routes/usage') },
+  { path: '/', route: require('./routes/auth') }
+  { path: '/company', route: require('./routes/company') },
+  { path: '/status', route: require('./routes/status') },
+  { path: '/me', route: require('./routes/me') },
+  { path: '/settings', route: require('./routes/settings') },
+  { path: '/n8n', route: require('./routes/n8n') },
+  { path: '/billing', route: require('./routes/billing') },
+  { path: '/dashboard', route: require('./routes/dashboard') },
+  { path: '/metrics', route: require('./routes/metrics') },
+  { path: '/whatsapp', route: require('./routes/whatsapp') },
+  { path: '/auth', route: require('./routes/auth') },
+  { path: '/health', route: require('./routes/health') },
+  { path: '/webhook', route: require('./routes/webhook') },
+  { path: '/conversations', route: require('./routes/conversations') },
+  { path: '/contacts', route: require('./routes/contacts') },
+  { path: '/automations', route: require('./routes/automations') },
+  // Mount auth at root to support /login and /api/login
+  { path: '/', route: require('./routes/auth') }
+];
+
+routes.forEach(({ path, route }) => {
+  console.log(`Registering route: ${path}`);
+  app.use(path, route);
+  
+  // Fix for double slash issue when path is '/'
+  const apiPath = path === '/' ? '/api' : `/api${path}`;
+  console.log(`Registering route: ${apiPath}`);
+  app.use(apiPath, route);
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler centralizado
+app.use(errorHandler);
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+});
