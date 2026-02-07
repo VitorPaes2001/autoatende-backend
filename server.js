@@ -1,26 +1,46 @@
 require('dotenv').config();
-
-// 🔥 SENTRY DEVE SER INICIALIZADO ANTES DE QUALQUER COISA
-const { initSentry, Sentry } = require('./src/config/sentry');
-
-// Inicializa Sentry ANTES de importar o Express
 const app = require('./src/app');
 
-// Ativa Sentry com o app
-initSentry(app);
+// 🛠️ DIAGNÓSTICO DE ROTAS (OBRIGATÓRIO PARA DEBUG)
+console.log('--------------------------------------------------');
+console.log('🚀 SERVER STARTING - ROUTE AUDIT');
+console.log('--------------------------------------------------');
 
-// 🔥 Handler de erro do Sentry — SEMPRE depois das rotas
-Sentry.setupExpressErrorHandler(app);
+function printRoutes() {
+  if (!app._router || !app._router.stack) {
+    console.error('❌ CRITICAL: app._router is not available!');
+    return;
+  }
 
-// Fallback final
-app.use((err, req, res, next) => {
-  console.error('Erro não tratado:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+  const routes = app._router.stack
+    .map(layer => {
+      if (layer.route) {
+        return `ROUTE: ${layer.route.path}`;
+      } else if (layer.name === 'router') {
+        // Tenta extrair o path do regex (aproximado)
+        return `ROUTER MOUNT: ${layer.regexp.toString()}`;
+      } else if (layer.name === 'bound dispatch') {
+         return `DISPATCH: ${layer.name}`;
+      }
+      return null;
+    })
+    .filter(Boolean);
 
-// Start
+  console.log('REGISTERED ROUTES:', routes);
+  
+  // Log detalhado para healthcheck especificamente
+  const hasHealth = app._router.stack.some(l => 
+    l.name === 'router' && l.regexp.toString().includes('health')
+  );
+  console.log('HEALTHCHECK DETECTED:', hasHealth ? '✅ YES' : '❌ NO');
+}
+
+printRoutes();
+console.log('--------------------------------------------------');
+
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`🚀 AutoAtende AI API running on port ${PORT}`);
+  console.log(`👉 Test internal: curl http://localhost:${PORT}/api/health`);
 });
-
