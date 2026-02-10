@@ -1,10 +1,9 @@
 const healthService = require('../services/health.service');
 const apiResponse = require('../utils/apiResponse');
-const AppError = require('../utils/AppError');
 const logger = require('../../utils/logger');
 
 const check = (req, res) => {
-  return apiResponse.success(res, { status: 'ok' });
+  return res.status(200).json({ status: 'ok' });
 };
 
 const deepCheck = async (req, res, next) => {
@@ -19,7 +18,7 @@ const deepCheck = async (req, res, next) => {
       await healthService.checkDatabase();
       services.database = 'ok';
     } catch (err) {
-      services.database = 'error';
+      services.database = 'down'; // Requirement asks for 'down' on failure
       logger.error(`Health check failed: Database - ${err.message}`);
     }
 
@@ -28,32 +27,32 @@ const deepCheck = async (req, res, next) => {
       await healthService.checkRedis();
       services.redis = 'ok';
     } catch (err) {
-      services.redis = 'error';
+      services.redis = 'down'; // Requirement asks for 'down' on failure
       logger.error(`Health check failed: Redis - ${err.message}`);
     }
 
     // Verify status
-    if (services.database === 'error' || services.redis === 'error') {
-      let message = 'Dependency failure';
-      if (services.database === 'error' && services.redis === 'error') {
-        message = 'Database and Redis unavailable';
-      } else if (services.database === 'error') {
-        message = 'Database unavailable';
-      } else if (services.redis === 'error') {
-        message = 'Redis unavailable';
-      }
-
-      const error = new AppError(message, 503, services);
-      error.code = 'DEPENDENCY_FAILURE';
-      throw error;
+    if (services.database === 'down' || services.redis === 'down') {
+      // Retorna 503 com formato específico solicitado, evitando o global handler
+      return res.status(503).json({
+        status: 'error',
+        code: 'DEPENDENCY_FAILURE',
+        services
+      });
     }
 
-    return apiResponse.success(res, {
+    return res.status(200).json({
       status: 'ok',
       services
     });
   } catch (err) {
-    next(err);
+    // Erro inesperado (ex: crash no código acima)
+    logger.error(`Health check critical error: ${err.message}`);
+    return res.status(500).json({
+      status: 'error',
+      code: 'INTERNAL_ERROR',
+      message: err.message
+    });
   }
 };
 

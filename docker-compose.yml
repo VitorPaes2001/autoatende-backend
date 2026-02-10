@@ -40,6 +40,17 @@ services:
     ports:
       - "3000:3000"
 
+    # ✅ HEALTHCHECK DEEP (READINESS + LIVENESS)
+    # /api/health = Liveness (Server UP)
+    # /api/health/deep = Readiness (Dependencies UP)
+    # Usamos o deep para garantir que o container só receba tráfego se Redis/DB estiverem ok.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/deep"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
     dns:
       - 8.8.8.8
       - 1.1.1.1

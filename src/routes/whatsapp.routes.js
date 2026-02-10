@@ -2,10 +2,14 @@ const express = require('express');
 const {
   handleIncomingWhatsAppMessage,
 } = require('../services/whatsappMessageHandler');
+const enforceUsage = require('../middlewares/usage.middleware');
+const authMiddleware = require('../middlewares/auth.middleware');
+const whatsappController = require('../controllers/whatsapp.controller');
 
 const router = express.Router();
 
-router.post('/webhook', async (req, res, next) => {
+// Public Webhook (WhatsApp Cloud API calls this)
+router.post('/webhook', enforceUsage, async (req, res, next) => {
   try {
     const result = await handleIncomingWhatsAppMessage(req.body);
 
@@ -19,5 +23,8 @@ router.post('/webhook', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+// Private Configuration Routes (Frontend calls these)
+router.post('/connect', authMiddleware, whatsappController.connect);
+router.get('/status', authMiddleware, whatsappController.getStatus);
 
+module.exports = router;

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { handleIncomingWhatsAppMessage } = require('../services/whatsappMessageHandler');
+const usageService = require('../services/usage.service');
 
 // GET — verificação
 router.get('/', (req, res) => {
@@ -45,6 +46,21 @@ router.post('/', async (req, res) => {
       to: value.metadata.display_phone_number,
       message: message.text.body
     };
+
+    // Aplica controle de uso manualmente (pois payload é raw e middleware genérico não pega)
+    try {
+      await usageService.authorizeAction({
+        companyId: payload.company_id,
+        type: 'inbound',
+        contact: payload.from,
+        timestamp: new Date()
+      });
+    } catch (usageErr) {
+      console.error('[WEBHOOK BLOCKED]', usageErr.message);
+      // Se bloqueado, retorna 200 para o WhatsApp não ficar tentando reenviar (regra padrão de webhook)
+      // Mas loga o erro.
+      return res.sendStatus(200);
+    }
 
     await handleIncomingWhatsAppMessage(payload);
 

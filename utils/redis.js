@@ -17,7 +17,13 @@ client.on("error", (err) => {
 });
 
 (async () => {
-  await client.connect();
+  try {
+    await client.connect();
+    console.log("Redis connected successfully");
+  } catch (err) {
+    console.error("Redis Connection Failed (Non-fatal):", err.message);
+    // Suppress throw to allow app to start without Redis
+  }
 })();
 
 module.exports = client;

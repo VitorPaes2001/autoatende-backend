@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Git
+.git
+.gitignore
+
+# Environment variables (CRITICAL)
+.env
+.env.*
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Editor/IDE
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Build outputs
+dist
+build
+coverage
+
+# Documentation
+README.md
+docs

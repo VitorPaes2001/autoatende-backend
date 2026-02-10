@@ -38,8 +38,14 @@ app.use('/api/stripe', require('./routes/stripe.routes'));
 // 🔹 Attendance Control
 app.use('/api/attendance', require('./routes/attendance.routes'));
 
-// 🔹 Metrics
-app.use('/api/metrics', require('./routes/metrics.routes'));
+// 🔹 Rotas de Negócio (Metrics & Billing)
+const metricsRoutes = require('./routes/metrics.routes');
+const billingRoutes = require('./routes/billing.routes');
+
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/billing', billingRoutes);
+
+console.log('[ROUTES] billing and metrics registered');
 
 // 🔹 Healthcheck
 console.log('Mounting /api/health routes...');
