@@ -27,7 +27,7 @@ services:
       NODE_ENV: production
 
       # 🔑 SUPABASE
-      SUPABASE_URL: https://xtftxgfqfupsxhfadax.supabase.co
+      SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
 
       # 🔴 REDIS
@@ -45,15 +45,11 @@ services:
     # /api/health/deep = Readiness (Dependencies UP)
     # Usamos o deep para garantir que o container só receba tráfego se Redis/DB estiverem ok.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/deep"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health | grep -q 'ok'"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
 
     networks:
       - whatsapp-net
