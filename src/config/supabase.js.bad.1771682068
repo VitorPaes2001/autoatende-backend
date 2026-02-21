@@ -61,12 +61,9 @@ function createBuilder() {
     limit: () => builder,
     range: () => builder,
 
-    then: (resolve, reject) =>
-      Promise.resolve(isSingle ? responseSingle() : responseList()).then(resolve, reject),
-    catch: (reject) =>
-      Promise.resolve(isSingle ? responseSingle() : responseList()).catch(reject),
-    finally: (f) =>
-      Promise.resolve(isSingle ? responseSingle() : responseList()).finally(f),
+    then: (resolve, reject) => Promise.resolve(isSingle ? responseSingle() : responseList()).then(resolve, reject),
+    catch: (reject) => Promise.resolve(isSingle ? responseSingle() : responseList()).catch(reject),
+    finally: (f) => Promise.resolve(isSingle ? responseSingle() : responseList()).finally(f),
   };
 
   return builder;

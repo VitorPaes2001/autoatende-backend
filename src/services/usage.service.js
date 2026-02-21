@@ -3,6 +3,27 @@ const conversationWindowService = require('./conversationWindow.service');
 const companyService = require('./company.service');
 const AppError = require('../utils/AppError');
 
+function getMonthYear(ts) {
+  const d = (ts instanceof Date) ? ts : new Date(ts || Date.now());
+  return { month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
+async function tryConsumeUsage({ clientId, year, month, templatesDelta, conversationsDelta, templatesLimit }) {
+  const { data, error } = await supabase.rpc('try_consume_usage', {
+    p_client_id: clientId,
+    p_year: year,
+    p_month: month,
+    p_templates_delta: templatesDelta,
+    p_conversations_delta: conversationsDelta,
+    p_templates_limit: templatesLimit,
+  });
+
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row || { allowed: true, templates_used: 0, conversations_used: 0, reason: 'OK' };
+}
+
+
 /**
  * Service de Consumo (Usage Service)
  * Responsável por validar regras de consumo e aplicar limites.
@@ -103,137 +124,85 @@ async function authorizeAction({ companyId, type, contact, timestamp }) {
   if (cost.conversations === 0 && cost.templates === 0) {
     return { authorized: true, cost };
   }
+  // 4️⃣ Verificar e Atualizar Limites (ATÔMICO via RPC)
+  const { month, year } = getMonthYear(timestamp || new Date());
+  const templatesLimit = plan.templates_limit ?? 0;
 
-  // 4️⃣ Verificar e Atualizar Limites (Transacional/Atômico se possível, ou Check-then-Act)
-  // Como Supabase não tem transações simples via JS client, usamos Check-then-Act com upsert
-  
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+  try {
+    const result = await tryConsumeUsage({
+      clientId: company.client_id,
+      year,
+      month,
+      templatesDelta: cost.templates,
+      conversationsDelta: cost.conversations,
+      templatesLimit
+    });
 
-  // Busca uso atual
-  const { data: usage, error: fetchError } = await supabase
-    .from('monthly_usage')
-    .select('conversations_used, templates_used')
-    .eq('client_id', company.client_id)
-    .eq('month', month)
-    .eq('year', year)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error('[Usage] Error fetching usage', fetchError);
-    throw new AppError('Failed to fetch usage data', 500);
-  }
-
-  const currentConversations = usage?.conversations_used ?? 0;
-  const currentTemplates = usage?.templates_used ?? 0;
-
-  // Valida Limites
-  if (cost.conversations > 0) {
-    // ⚠️ Conversas não bloqueiam mais (Regra de Negócio: Ilimitado)
-    // Mantemos a contagem apenas para métricas.
-    /*
-    if (currentConversations + cost.conversations > plan.conversations_limit) {
-      throw new AppError('Conversation limit exceeded', 402, { 
-        code: 'LIMIT_EXCEEDED', 
-        resource: 'conversations',
-        limit: plan.conversations_limit,
-        used: currentConversations,
-        action: 'upgrade_plan'
-      });
-    }
-    */
-  }
-
-  if (cost.templates > 0) {
-    // Nota: Se o plano não tiver limite de templates definido (null/undefined), assume ilimitado?
-    // Ou assume 0? Vamos assumir que plan.templates_limit existe.
-    // Se for null, vamos tratar como 0 ou infinito?
-    // Padrão seguro: tratar como 0 se undefined.
-    const limitTemplates = plan.templates_limit ?? 0;
-    if (currentTemplates + cost.templates > limitTemplates) {
-      throw new AppError('Template limit exceeded', 402, { 
+    if (!result.allowed && result.reason === 'TEMPLATE_LIMIT_EXCEEDED') {
+      throw new AppError('Template limit exceeded', 402, {
         code: 'LIMIT_EXCEEDED',
         resource: 'templates',
-        limit: limitTemplates,
-        used: currentTemplates,
+        limit: templatesLimit,
+        used: result.templates_used ?? 0,
         action: 'upgrade_plan'
       });
     }
-  }
 
-  // Persiste Uso
-  const { error: updateError } = await supabase.from('monthly_usage').upsert(
-    {
-      client_id: company.client_id,
-      month,
-      year,
-      conversations_used: currentConversations + cost.conversations,
-      templates_used: currentTemplates + cost.templates,
-    },
-    {
-      onConflict: 'client_id,month,year',
+    if (!result.allowed && (result.reason === 'INVALID_CLIENT_ID' || result.reason === 'UNKNOWN_CLIENT')) {
+      throw new AppError('Invalid client_id', 500, { code: 'STRUCTURAL_FAILURE' });
     }
-  );
 
-  if (updateError) {
-    console.error('[Usage] Error updating usage', updateError);
-    throw new AppError('Failed to update usage', 500);
+    return { authorized: true, cost };
+  } catch (err) {
+    // degraded safety: em dev, não derruba operação
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[Usage] degraded: RPC try_consume_usage failed, allowing in non-production', {
+        message: err?.message
+      });
+      return { authorized: true, cost, degraded: true };
+    }
+    throw err;
   }
-
-  return { authorized: true, cost };
 }
+
 
 // Mantendo compatibilidade com código legado, mas encapsulando lógica nova se possível
 // ou apenas exportando para não quebrar outras partes (será refatorado depois)
 async function consumeUsage(params) {
-  // Esta função antiga recebia 'plan' explicitamente.
-  // Idealmente, deveríamos migrar tudo para authorizeAction.
-  // Por enquanto, mantemos a implementação original para não quebrar 'whatsappMessageHandler'
-  // se ele ainda for usado, mas o ideal é que 'whatsappMessageHandler' use authorizeAction.
-  
-  // ... implementação original ...
-  // Vou reimplementar a original aqui para garantir que o arquivo fique completo
   const { clientId, isNewConversation, requiresTemplate, plan } = params;
-  
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
 
-  const { data: usage, error } = await supabase
-    .from('monthly_usage')
-    .select('conversations_used, templates_used')
-    .eq('client_id', clientId)
-    .eq('month', month)
-    .eq('year', year)
-    .maybeSingle();
+  const { month, year } = getMonthYear(new Date());
+  const templatesDelta = requiresTemplate ? 1 : 0;
+  const conversationsDelta = isNewConversation ? 1 : 0;
 
-  if (error) throw error;
+  // Regra do produto: conversas não bloqueiam mais; só templates bloqueiam
+  const templatesLimit = plan?.templates_limit ?? 0;
 
-  const conversationsUsed = usage?.conversations_used ?? 0;
-  const templatesUsed = usage?.templates_used ?? 0;
+  try {
+    const result = await tryConsumeUsage({
+      clientId,
+      year,
+      month,
+      templatesDelta,
+      conversationsDelta,
+      templatesLimit
+    });
 
-  if (isNewConversation && conversationsUsed + 1 > plan.conversations_limit) {
-    return { allowed: false, reason: 'CONVERSATION_LIMIT_EXCEEDED' };
+    if (!result.allowed && result.reason === 'TEMPLATE_LIMIT_EXCEEDED') {
+      return { allowed: false, reason: 'TEMPLATE_LIMIT_EXCEEDED' };
+    }
+
+    return { allowed: true };
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[Usage] degraded: RPC try_consume_usage failed in consumeUsage, allowing in non-production', {
+        message: err?.message
+      });
+      return { allowed: true, degraded: true };
+    }
+    throw err;
   }
-
-  if (requiresTemplate && templatesUsed + 1 > plan.templates_limit) {
-    return { allowed: false, reason: 'TEMPLATE_LIMIT_EXCEEDED' };
-  }
-
-  const { error: upsertError } = await supabase.from('monthly_usage').upsert({
-    client_id: clientId,
-    month,
-    year,
-    conversations_used: conversationsUsed + (isNewConversation ? 1 : 0),
-    templates_used: templatesUsed + (requiresTemplate ? 1 : 0),
-  }, { onConflict: 'client_id,month,year' });
-
-  if (upsertError) throw upsertError;
-
-  return { allowed: true };
 }
-
 
 module.exports = {
   authorizeAction,
