@@ -20,7 +20,7 @@ app.use(express.json({
   verify: (req, res, buf) => {
     // Armazena rawBody para validação de assinatura do Stripe
     if (req.originalUrl.includes('/stripe/webhook')) {
-      req.rawBody = buf.toString();
+      req.rawBody = buf;
     }
   }
 }));
