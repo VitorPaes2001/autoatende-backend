@@ -48,3 +48,5 @@ build/
 uploads/
 *.ogg
 temp_audio_file*
+
+.env
