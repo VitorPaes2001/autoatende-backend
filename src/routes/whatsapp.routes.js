@@ -22,13 +22,19 @@ router.get('/webhook', (req, res) => {
 
 // Public Webhook Receiver (WhatsApp Cloud API calls this)
 // IMPORTANT: never return 4xx/5xx for business logic blocks, always ACK 200.
-router.post('/webhook', async (req, res, next) => {
-  try {
-    await handleIncomingWhatsAppMessage(req.body);
-    return res.status(200).json({ received: true });
-  } catch (err) {
-    next(err);
-  }
+router.post('/webhook', (req, res) => {
+  const payload = req.body;
+
+  // ACK imediato: evita retry storm do provedor
+  res.status(200).json({ received: true });
+
+  setImmediate(async () => {
+    try {
+      await handleIncomingWhatsAppMessage(payload);
+    } catch (err) {
+      console.error('[WhatsApp Webhook] processing failed:', err?.message || err);
+    }
+  });
 });
 
 // Private Configuration Routes (Frontend calls these)
