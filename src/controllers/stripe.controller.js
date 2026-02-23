@@ -1,4 +1,5 @@
 const billingService = require('../services/billing.service');
+const stripeWebhookEventService = require('../services/stripeWebhookEvent.service');
 const stripe = require('../config/stripe');
 
 async function webhook(req, res) {
@@ -8,16 +9,10 @@ async function webhook(req, res) {
   let event;
 
   try {
-    // Se tiver secret, valida assinatura
     if (endpointSecret) {
-      // Use req.rawBody stored by express.json verify option
       const payload = req.rawBody || req.body;
       event = stripe.webhooks.constructEvent(payload, sig, endpointSecret);
     } else {
-      // Dev mode: trust body directly (not recommended for prod but useful for dev if secret missing)
-      // Note: express.json() might break constructEvent if it expects raw body.
-      // We need raw body for Stripe signature verification.
-      // app.js has app.use(express.json()). This is a problem for Stripe webhooks.
       event = req.body;
     }
   } catch (err) {
@@ -25,12 +20,30 @@ async function webhook(req, res) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  let eventId = event?.id || null;
+
   try {
+    const processing = await stripeWebhookEventService.startProcessing(event);
+    eventId = processing.eventId || eventId;
+
+    if (processing.isDuplicate) {
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+
     await billingService.handleWebhook(event);
-    res.json({ received: true });
+    await stripeWebhookEventService.markProcessed(eventId);
+
+    return res.status(200).json({ received: true });
   } catch (err) {
     console.error(`[Stripe Webhook Handler Error] ${err.message}`);
-    res.status(500).json({ error: 'Internal Server Error' });
+
+    try {
+      await stripeWebhookEventService.markFailed(eventId, err.message);
+    } catch (trackErr) {
+      console.error(`[Stripe Webhook Tracking Error] ${trackErr.message}`);
+    }
+
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 

@@ -232,26 +232,23 @@ async function handleWebhook(event) {
 
   console.log(`[Billing] Processing webhook: ${type}`);
 
-  try {
-    switch (type) {
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        await handleSubscriptionChange(data);
-        break;
-      
-      case 'invoice.payment_succeeded':
-        await handlePaymentSucceeded(data);
-        break;
+  switch (type) {
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      await handleSubscriptionChange(data);
+      break;
 
-      case 'invoice.payment_failed':
-        await handlePaymentFailed(data);
-        break;
-    }
-  } catch (error) {
-    console.error(`[Billing] Error processing webhook ${type}:`, error);
-    // Não lança erro para não retentar infinitamente se for erro de lógica, 
-    // mas em prod deveríamos analisar retry policies.
+    case 'invoice.payment_succeeded':
+      await handlePaymentSucceeded(data);
+      break;
+
+    case 'invoice.payment_failed':
+      await handlePaymentFailed(data);
+      break;
+
+    default:
+      console.log(`[Billing] Ignoring unsupported webhook event: ${type}`);
   }
 }
 
