@@ -3,6 +3,7 @@ const supabase = require('../config/supabase');
 const { getCompany, getSubscription } = require('./company.service');
 const metricsService = require('./metrics.service');
 const { getPlanByPriceId, PLANS } = require('../config/plans');
+const overageBillingService = require('./overageBilling.service');
 
 /**
  * Billing Service
@@ -135,9 +136,9 @@ async function getBillingStatus(companyId, clientId) {
       blockedInfo.reason = 'payment_required';
       blockedInfo.action = 'update_payment';
     } else if (limitExceeded) {
-      blockedInfo.isBlocked = true;
-      blockedInfo.reason = 'limit_exceeded';
-      blockedInfo.action = 'upgrade_plan';
+      blockedInfo.isBlocked = false;
+      blockedInfo.reason = 'overage_active';
+      blockedInfo.action = null;
     }
 
     // 7. Montar Features
@@ -148,6 +149,8 @@ async function getBillingStatus(companyId, clientId) {
       whitelabel: featuresList.includes('whitelabel')
     };
 
+    const monthlySummary = await overageBillingService.getMonthlyUsageSummary(clientId).catch(() => null);
+
     // 8. Retorno Blindado
     return {
       plan: planConfigRaw.name,
@@ -155,7 +158,8 @@ async function getBillingStatus(companyId, clientId) {
       limits,
       usage,
       features,
-      blocked: blockedInfo
+      blocked: blockedInfo,
+      monthlySummary
     };
 
   } catch (error) {
