@@ -1,127 +1,89 @@
 const supabase = require('../config/supabase');
 
-/**
- * Busca empresa pelo ID
- */
+function planFromPriceCents(priceCents) {
+  if (priceCents === 69900) return { name: 'Business', templates_limit: 2000, conversations_limit: 2000 };
+  if (priceCents === 44900) return { name: 'Pro', templates_limit: 800, conversations_limit: 800 };
+  return { name: 'Starter', templates_limit: 300, conversations_limit: 300 };
+}
+
 async function getCompany(companyId) {
   const { data, error } = await supabase
     .from('companies')
-    .select('id, name, client_id')
+    .select('id, name, client_id, slug, status, created_at')
     .eq('id', companyId)
     .maybeSingle();
 
-  if (error) {
-    console.error('[Company] Error fetching company', error);
-    return null;
-  }
-
-  return data;
+  if (error) throw error;
+  return data || null;
 }
 
-/**
- * Busca plano ativo
- */
-async function getActivePlan(clientId) {
+async function getCompanyByClientId(clientId) {
   const { data, error } = await supabase
-    .from('subscriptions')
-    .select(`
-      id,
-      status,
-      plan:plans (
-        name,
-        conversations_limit,
-        templates_limit
-      )
-    `)
+    .from('companies')
+    .select('id, name, client_id, slug, status, created_at')
     .eq('client_id', clientId)
-    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (error || !data?.plan) {
-    console.error('[Company] Error fetching active plan', error);
-    return null;
-  }
-
-  return {
-    plan: data.plan.name,
-    conversations_limit: data.plan.conversations_limit,
-    templates_limit: data.plan.templates_limit
-  };
+  if (error) throw error;
+  return data || null;
 }
 
-/**
- * Busca assinatura (independente do status)
- * Retorna status e limites para enforcement
- */
 async function getSubscription(clientId) {
+  // ✅ NÃO selecionar conversations_limit/templates_limit (não existem no schema)
   const { data, error } = await supabase
     .from('subscriptions')
     .select(`
       id,
+      client_id,
+      plan_id,
       status,
-      stripe_subscription_id,
+      start_date,
+      end_date,
+      created_at,
+      provider,
       stripe_customer_id,
-      plan:plans (
-        name,
-        conversations_limit,
-        templates_limit
-      )
+      stripe_subscription_id,
+      company_id,
+      plan:plans(id, price_cents, name)
     `)
     .eq('client_id', clientId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    console.error('[Company] Error fetching subscription', error);
-    return null;
-  }
-
+  if (error) throw error;
   if (!data) return null;
 
+  // Se o relacionamento não trouxer plan, busca direto pelo plan_id
+  let planRow = data.plan || null;
+  if (!planRow && data.plan_id) {
+    const { data: p, error: pe } = await supabase
+      .from('plans')
+      .select('id, price_cents, name')
+      .eq('id', data.plan_id)
+      .maybeSingle();
+    if (pe) throw pe;
+    planRow = p || null;
+  }
+
+  const cents = planRow?.price_cents;
+  const derived = planFromPriceCents(cents);
+
   return {
-    id: data.id,
-    status: data.status,
-    stripe_subscription_id: data.stripe_subscription_id,
-    stripe_customer_id: data.stripe_customer_id,
-    plan: data.plan ? {
-      name: data.plan.name,
-      conversations_limit: data.plan.conversations_limit,
-      templates_limit: data.plan.templates_limit
-    } : null
+    ...data,
+    plan: {
+      ...(planRow || {}),
+      name: planRow?.name || derived.name,
+      templates_limit: derived.templates_limit,
+      conversations_limit: derived.conversations_limit
+    }
   };
-}
-
-async function getCompanyByPhoneNumber(phoneNumber) {
-  // Normalize phone (remove + and spaces)
-  const cleanPhone = phoneNumber.replace(/\D/g, '');
-  
-  // Try to find in whatsapp_accounts
-  // Note: This assumes 1-to-1 mapping or we pick the first
-  const { data, error } = await supabase
-    .from('whatsapp_accounts')
-    .select('client_id')
-    .ilike('phone_number', `%${cleanPhone}%`) // Loose match
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) return null;
-
-  // Get company details
-  const { data: company, error: companyError } = await supabase
-    .from('companies')
-    .select('id, name, client_id, plan, status')
-    .eq('client_id', data.client_id)
-    .maybeSingle();
-
-  if (companyError) return null;
-  return company;
 }
 
 module.exports = {
   getCompany,
-  getActivePlan,
-  getSubscription,
-  getCompanyByPhoneNumber
+  getCompanyByClientId,
+  getSubscription
 };
-
