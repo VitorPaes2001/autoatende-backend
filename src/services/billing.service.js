@@ -18,114 +18,104 @@ const overageBillingService = require('./overageBilling.service');
  */
 async function getBillingStatus(companyId, clientId) {
   try {
-    // 1. Obter Assinatura (Safe)
-    let subscription = null;
-    try {
-      subscription = await getSubscription(clientId);
-    } catch (e) {
-      console.error('[BillingService] Error fetching subscription, using fallback:', e);
-    }
+    if (!clientId) throw new Error('Missing clientId');
 
-    // 2. Obter Dados da Empresa (Manual Billing Fallback)
-    // CRITICAL FIX: Always fetch company details to allow fallback to manual plan
-    // even if an inactive subscription exists.
-    let companyPlan = null;
-    let companyStatus = null;
+    // 1) Fonte da verdade (DB): clients + subscriptions (+ plans.price_cents)
+    const { data: client, error: clientErr } = await supabase
+      .from('clients')
+      .select('plan, plan_id, plan_status, status')
+      .eq('id', clientId)
+      .maybeSingle();
 
-    try {
-      const { data: company, error } = await supabase
-        .from('companies')
-        .select('plan, status')
-        .eq('id', companyId)
+    if (clientErr) console.warn('[BillingService] clientErr:', clientErr.message);
+
+    const { data: sub, error: subErr } = await supabase
+      .from('subscriptions')
+      .select('status, plan_id, provider, created_at')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (subErr) console.warn('[BillingService] subErr:', subErr.message);
+
+    let planKey = (client?.plan || '').toLowerCase().trim();
+    const planId = client?.plan_id || sub?.plan_id || null;
+
+    if (!planKey && planId) {
+      const { data: planRow, error: planErr } = await supabase
+        .from('plans')
+        .select('price_cents')
+        .eq('id', planId)
         .maybeSingle();
-      
-      if (!error && company) {
-        companyPlan = company.plan;
-        companyStatus = company.status;
-      }
-    } catch (e) {
-      console.error('[BillingService] Error fetching company details:', e);
+
+      if (planErr) console.warn('[BillingService] planErr:', planErr.message);
+
+      const cents = planRow?.price_cents;
+      if (cents === 24900) planKey = 'starter';
+      else if (cents === 44900) planKey = 'pro';
+      else if (cents === 69900) planKey = 'business';
     }
 
-    // DIAGNÓSTICO OBRIGATÓRIO
-    console.log('=== BILLING DIAGNOSTICS ===');
-    console.log('CompanyId:', companyId);
-    console.log('Company Plan:', companyPlan);
-    console.log('Company Status:', companyStatus);
-    console.log('Subscription:', subscription ? `Found (Status: ${subscription.status})` : 'NULL');
+    if (!planKey) planKey = 'starter';
 
-    // 3. Resolver Status e Plano Final (CORREÇÃO OBRIGATÓRIA - HIERARQUIA ESTRITA)
-    let subStatus = 'inactive';
-    let subPlanName = 'Starter'; // Default to Starter
-
-    if (subscription && subscription.status === 'active') {
-      console.log('[BillingService] Decision: Using Subscription');
-      subStatus = subscription.status;
-      subPlanName = subscription.plan?.name || 'Starter';
-    } else if (companyPlan && companyPlan.toLowerCase() === 'business' && companyStatus === 'active') {
-      console.log('[BillingService] Decision: Using Company Manual Plan (Business)');
-      subStatus = 'active';
-      subPlanName = 'Business'; // Force Capital B
-    } else {
-      console.log('[BillingService] Decision: Fallback to Starter');
-      subStatus = 'active'; // Starter plan is active by default
-      subPlanName = 'Starter';
+    // status: preferir clients.plan_status; senão subscriptions.status (enum)
+    let subStatus = (client?.plan_status || '').toLowerCase().trim();
+    if (!subStatus) {
+      const s = (sub?.status || '').toLowerCase().trim();
+      subStatus = (s === 'active' || s === 'trialing') ? 'active' : 'inactive';
     }
 
-    console.log('Final Decision -> Plan:', subPlanName, 'Status:', subStatus);
-    console.log('===========================');
+    const planLabel =
+      planKey === 'business' ? 'Business' :
+      planKey === 'pro' ? 'Pro' :
+      'Starter';
 
-    // 4. Resolver Config do Plano (Safe)
-    // Busca na config do código usando helper de normalização
-    const { getPlanByName, PLANS } = require('../config/plans');
-    let planConfigRaw = getPlanByName(subPlanName);
-    
-    // Normalizar features (pode estar em root ou limits dependendo da versão do plans.js)
-    const featuresList = planConfigRaw.features || planConfigRaw.limits?.features || [];
-    
-    // 4. Obter Uso (Safe)
-    let overview = null;
-    try {
-      overview = await metricsService.getCompanyOverview(companyId);
-    } catch (e) {
-      console.error('[BillingService] Error fetching overview, using zeroed fallback:', e);
-    }
+    // Plano config (features/agents etc)
+    const { getPlanByName } = require('../config/plans');
+    const planConfigRaw = getPlanByName(planLabel);
 
-    // Garantir estrutura mínima de usage
-    const usage = {
-      conversations: overview?.usage?.conversations?.used || 0,
-      templates: overview?.usage?.templates?.used || 0,
-      agents: 1 // Será atualizado abaixo
-    };
+    const templatesLimit = planConfigRaw?.limits?.templates || (planKey === 'business' ? 2000 : planKey === 'pro' ? 800 : 300);
 
+    // ✅ Evitar NaN no frontend: conversations SEMPRE numérico
     const limits = {
-      conversations: overview?.usage?.conversations?.total || planConfigRaw.limits.conversations || 0,
-      templates: overview?.usage?.templates?.total || planConfigRaw.limits.templates || 0,
-      agents: planConfigRaw.limits.agents || 1
+      conversations: templatesLimit,
+      templates: templatesLimit,
+      agents: planConfigRaw?.limits?.agents || 1
     };
 
-    // 5. Contar Agentes (Safe)
-    let agentCount = 1;
-    try {
-      const { count, error } = await supabase
+    // Uso: use monthly summary (já está consistente no seu DB)
+    const monthlySummary = await overageBillingService.getMonthlyUsageSummary(clientId).catch(() => null);
+
+    const usage = {
+      conversations: monthlySummary?.conversations_used || 0,
+      templates: monthlySummary?.templates_used || 0,
+      agents: 1
+    };
+
+    // Agentes: conta users por company_id se tiver companyId
+    if (!companyId) {
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('client_id', clientId)
+        .maybeSingle();
+      companyId = company?.id || null;
+    }
+
+    if (companyId) {
+      const { count } = await supabase
         .from('users')
         .select('*', { count: 'exact', head: true })
         .eq('company_id', companyId);
-      
-      if (!error && count !== null) {
-        agentCount = count;
-      }
-    } catch (e) {
-      console.error('[BillingService] Error counting agents:', e);
+      if (count !== null && count !== undefined) usage.agents = count;
     }
-    usage.agents = agentCount;
 
-    // 6. Determinar Bloqueio
-    const isPastDue = ['past_due', 'unpaid', 'canceled'].includes(subStatus);
-    // CHANGE: Conversations never block, only templates
-    const limitExceeded = (usage.templates >= limits.templates);
+    // Bloqueio: templates não bloqueiam (overage), mas pagamento pode bloquear
+    const rawSubStatus = (sub?.status || '').toLowerCase().trim();
+    const isPastDue = ['past_due', 'unpaid', 'canceled'].includes(rawSubStatus);
 
-    let blockedInfo = {
+    const blockedInfo = {
       isBlocked: false,
       reason: null,
       action: null
@@ -135,25 +125,23 @@ async function getBillingStatus(companyId, clientId) {
       blockedInfo.isBlocked = true;
       blockedInfo.reason = 'payment_required';
       blockedInfo.action = 'update_payment';
-    } else if (limitExceeded) {
+    } else if (usage.templates >= limits.templates) {
       blockedInfo.isBlocked = false;
       blockedInfo.reason = 'overage_active';
       blockedInfo.action = null;
     }
 
-    // 7. Montar Features
+    const featuresList = planConfigRaw?.features || planConfigRaw?.limits?.features || [];
+
     const features = {
       analytics: featuresList.includes('analytics'),
-      attendance_transfer: true, // Core feature
+      attendance_transfer: true,
       custom_integration: featuresList.includes('custom_integration'),
       whitelabel: featuresList.includes('whitelabel')
     };
 
-    const monthlySummary = await overageBillingService.getMonthlyUsageSummary(clientId).catch(() => null);
-
-    // 8. Retorno Blindado
     return {
-      plan: planConfigRaw.name,
+      plan: planConfigRaw?.name || planLabel,
       status: subStatus,
       limits,
       usage,
@@ -161,20 +149,19 @@ async function getBillingStatus(companyId, clientId) {
       blocked: blockedInfo,
       monthlySummary
     };
-
   } catch (error) {
     console.error('[BillingService] Critical error building status:', error);
-    // Fallback de Último Recurso (Starter / Inactive)
     return {
       plan: 'Starter',
       status: 'inactive',
-      limits: { conversations: Infinity, templates: 300, agents: 1 },
+      limits: { conversations: 300, templates: 300, agents: 1 },
       usage: { conversations: 0, templates: 0, agents: 1 },
       features: {},
       blocked: { isBlocked: false }
     };
   }
 }
+
 
 /**
  * Cria ou atualiza um cliente no Stripe

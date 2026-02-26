@@ -1,23 +1,28 @@
 const billingService = require('../services/billing.service');
 const overageBillingService = require('../services/overageBilling.service');
+const supabase = require('../config/supabase');
 
 async function getStatus(req, res) {
   try {
-    const companyId = req.companyId || req.user?.companyId;
     const clientId = req.user?.id || req.user?.clientId;
+    if (!clientId) return res.status(401).json({ error: 'Unauthorized' });
+
+    // companyId pode não estar no req dependendo do middleware
+    let companyId = req.companyId || req.user?.companyId || null;
+    if (!companyId) {
+      const { data: company, error } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('client_id', clientId)
+        .maybeSingle();
+      if (!error && company?.id) companyId = company.id;
+    }
 
     const status = await billingService.getBillingStatus(companyId, clientId);
-    res.json(status);
+    return res.json(status);
   } catch (error) {
     console.error('[BillingController] Unexpected error in getStatus:', error);
-    res.json({
-      plan: 'Starter',
-      status: 'inactive',
-      limits: { conversations: Infinity, templates: 300, agents: 1 },
-      usage: { conversations: 0, templates: 0, agents: 1 },
-      features: {},
-      blocked: { isBlocked: false }
-    });
+    return res.status(500).json({ error: 'Failed to fetch billing status' });
   }
 }
 
