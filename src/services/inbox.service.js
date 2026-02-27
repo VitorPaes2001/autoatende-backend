@@ -2,6 +2,9 @@ const supabase = require('../config/supabase');
 const attendanceService = require('./attendance.service');
 const whatsappService = require('./whatsapp.service');
 
+const INBOX_CONVERSATIONS_TABLE = 'inbox_conversations';
+const INBOX_MESSAGES_TABLE = 'inbox_messages';
+
 function toMessageObjectFromLegacy(message) {
   if (!message) return null;
   if (typeof message === 'string') {
@@ -147,7 +150,7 @@ async function upsertConversationInbound({ companyId, from, nowIso }) {
   };
 
   const { data: upserted, error: upsertErr } = await supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .upsert(upsertPayload, { onConflict: 'company_id,contact_number' })
     .select('*')
     .maybeSingle();
@@ -158,7 +161,7 @@ async function upsertConversationInbound({ companyId, from, nowIso }) {
 
   // Fallback if onConflict is not available in tenant schema.
   const { data: existing } = await supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .select('*')
     .eq('company_id', companyId)
     .eq('contact_number', from)
@@ -166,7 +169,7 @@ async function upsertConversationInbound({ companyId, from, nowIso }) {
 
   if (existing?.id) {
     const { data: updated, error: updateErr } = await supabase
-      .from('conversations')
+      .from(INBOX_CONVERSATIONS_TABLE)
       .update({
         status: 'open',
         last_message_at: nowIso,
@@ -182,7 +185,7 @@ async function upsertConversationInbound({ companyId, from, nowIso }) {
   }
 
   const { data: inserted, error: insertErr } = await supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .insert(upsertPayload)
     .select('*')
     .maybeSingle();
@@ -202,7 +205,7 @@ async function insertMessageWithFallback(payloadCandidates) {
 
   for (const candidate of payloadCandidates) {
     const { data, error } = await supabase
-      .from('messages')
+      .from(INBOX_MESSAGES_TABLE)
       .insert(candidate)
       .select('*')
       .maybeSingle();
@@ -346,7 +349,7 @@ async function processInboundWebhook(rawPayload) {
 
 async function listConversations(companyId, search = '') {
   let query = supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .select('*')
     .eq('company_id', companyId)
     .order('last_message_at', { ascending: false })
@@ -395,7 +398,7 @@ async function listConversations(companyId, search = '') {
 
 async function getConversationById(companyId, conversationId) {
   const { data, error } = await supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .select('*')
     .eq('company_id', companyId)
     .eq('id', conversationId)
@@ -407,7 +410,7 @@ async function getConversationById(companyId, conversationId) {
 
 async function listMessages(companyId, conversationId) {
   const { data, error } = await supabase
-    .from('messages')
+    .from(INBOX_MESSAGES_TABLE)
     .select('*')
     .eq('company_id', companyId)
     .eq('conversation_id', conversationId)
@@ -446,7 +449,7 @@ async function sendManualMessage({ companyId, clientId, conversationId, text, ac
   const savedMessage = await insertMessageWithFallback(outboundCandidates);
 
   await supabase
-    .from('conversations')
+    .from(INBOX_CONVERSATIONS_TABLE)
     .update({
       status: 'open',
       last_message_at: nowIso,
@@ -464,7 +467,7 @@ async function sendManualMessage({ companyId, clientId, conversationId, text, ac
 
       if (savedMessage?.id) {
         await supabase
-          .from('messages')
+          .from(INBOX_MESSAGES_TABLE)
           .update({ status: 'sent' })
           .eq('id', savedMessage.id);
       }
@@ -474,7 +477,7 @@ async function sendManualMessage({ companyId, clientId, conversationId, text, ac
 
       if (savedMessage?.id) {
         await supabase
-          .from('messages')
+          .from(INBOX_MESSAGES_TABLE)
           .update({ status: 'failed' })
           .eq('id', savedMessage.id);
       }
