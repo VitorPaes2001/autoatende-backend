@@ -1,10 +1,11 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, MessageSquare, Settings, LogOut, CreditCard } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Settings, LogOut, CreditCard, Inbox } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import SettingsPage from './pages/SettingsPage';
 import BillingPage from './pages/BillingPage';
+import InboxPage from './pages/Inbox';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import OnboardingModal from './components/OnboardingModal';
@@ -18,6 +19,7 @@ const Layout = ({ children }) => {
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/attendance', icon: MessageSquare, label: 'Atendimento' },
+    { path: '/inbox', icon: Inbox, label: 'Inbox' },
     { path: '/billing', icon: CreditCard, label: 'Meu Plano' },
     { path: '/settings', icon: Settings, label: 'Configurações' },
   ];
@@ -111,6 +113,11 @@ function App() {
           <Route path="/attendance" element={
             <ProtectedRoute>
               <Attendance />
+            </ProtectedRoute>
+          } />
+          <Route path="/inbox" element={
+            <ProtectedRoute>
+              <InboxPage />
             </ProtectedRoute>
           } />
           <Route path="/billing" element={

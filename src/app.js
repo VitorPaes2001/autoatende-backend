@@ -31,6 +31,9 @@ app.use(sentryContext);
 // 🔹 Rotas
 const whatsappRoutes = require('./routes/whatsapp.routes');
 app.use('/api/whatsapp', whatsappRoutes);
+const authMiddleware = require('./middlewares/auth.middleware');
+const inboxRoutes = require('./routes/inbox.routes');
+app.use('/api/inbox', authMiddleware, inboxRoutes);
 
 // 🔹 Stripe Webhooks
 app.use('/api/stripe', require('./routes/stripe.routes'));
@@ -96,4 +99,3 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app;
-

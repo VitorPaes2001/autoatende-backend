@@ -2,6 +2,7 @@ const express = require('express');
 const {
   handleIncomingWhatsAppMessage,
 } = require('../services/whatsappMessageHandler');
+const inboxService = require('../services/inbox.service');
 const authMiddleware = require('../middlewares/auth.middleware');
 const whatsappController = require('../controllers/whatsapp.controller');
 
@@ -30,7 +31,12 @@ router.post('/webhook', (req, res) => {
 
   setImmediate(async () => {
     try {
-      await handleIncomingWhatsAppMessage(payload);
+      const inbound = await inboxService.processInboundWebhook(payload);
+      const normalizedPayload = inbound?.normalized;
+
+      if (normalizedPayload?.company_id && normalizedPayload?.from && normalizedPayload?.message) {
+        await handleIncomingWhatsAppMessage(normalizedPayload);
+      }
     } catch (err) {
       console.error('[WhatsApp Webhook] processing failed:', err?.message || err);
     }
