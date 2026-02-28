@@ -144,14 +144,14 @@ async function getDailyVolume(companyId, days = 30) {
   // Vamos tentar buscar apenas created_at.
   
   const { data: messages, error } = await supabase
-    .from('messages')
+    .from('inbox_messages')
     .select('created_at')
     .eq('company_id', companyId)
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: true });
 
   if (error) {
-    console.error('[Metrics] Error fetching messages', error);
+    console.error('[Metrics] Error fetching messages', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint });
     throw new AppError('Failed to fetch temporal metrics', 500);
   }
 

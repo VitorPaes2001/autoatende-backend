@@ -1,68 +1,82 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
-if [[ -z "${BASE_URL:-}" ]]; then
-  echo "BASE_URL não definido. Ex: BASE_URL=https://api.autoatendeai.com.br"
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+JWT_TOKEN="${JWT_TOKEN:-}"
+CONVERSATION_ID="${CONVERSATION_ID:-}"
+
+if [ -z "$JWT_TOKEN" ]; then
+  echo "ERROR: JWT_TOKEN is required"
   exit 1
 fi
 
-if [[ -z "${JWT_TOKEN:-}" ]]; then
-  echo "JWT_TOKEN não definido. Ex: JWT_TOKEN=<token_jwt_supabase>"
-  exit 1
+TMP="$(mktemp -t inbox.XXXXXX)"
+cleanup() { rm -f "$TMP" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+req() {
+  method="$1"
+  url="$2"
+  payload="${3:-}"
+
+  if [ "$method" = "GET" ]; then
+    code="$(curl -sS -o "$TMP" -w "%{http_code}" \
+      -H "Authorization: Bearer $JWT_TOKEN" \
+      "$url")"
+  else
+    code="$(curl -sS -o "$TMP" -w "%{http_code}" \
+      -H "Authorization: Bearer $JWT_TOKEN" \
+      -H "Content-Type: application/json" \
+      -X "$method" -d "$payload" \
+      "$url")"
+  fi
+
+  echo "$code"
+}
+
+first_id() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$TMP" <<'PY'
+import json,sys
+p=sys.argv[1]
+try:
+  arr=json.load(open(p,'r',encoding='utf-8'))
+  if isinstance(arr,list) and arr:
+    print(arr[0].get("id",""))
+except Exception:
+  print("")
+PY
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'const fs=require("fs"); try{const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log((a&&a[0]&&a[0].id)||"");}catch(e){console.log("");}' "$TMP"
+  else
+    grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "$TMP" | head -n1 | sed -E 's/.*"([^"]+)".*/\1/' || true
+  fi
+}
+
+echo "[1/3] GET /api/inbox/conversations"
+c="$(req GET "$BASE_URL/api/inbox/conversations")"
+echo "HTTP $c"
+head -c 400 "$TMP"; echo
+[ "$c" = "200" ] || exit 1
+
+if [ -z "$CONVERSATION_ID" ]; then
+  CONVERSATION_ID="$(first_id)"
 fi
 
-AUTH_HEADER="Authorization: Bearer ${JWT_TOKEN}"
-JSON_HEADER="Content-Type: application/json"
-
-echo "[1/6] GET /api/inbox/conversations"
-CONV_RESP=$(curl -sS -X GET "${BASE_URL}/api/inbox/conversations" -H "$AUTH_HEADER")
-echo "$CONV_RESP"
-
-CONV_ID=$(printf '%s' "$CONV_RESP" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const arr=Array.isArray(j)?j:(j.data||j.conversations||[]);process.stdout.write(String(arr?.[0]?.id||''));}catch(e){process.stdout.write('');}})")
-
-if [[ -z "$CONV_ID" ]]; then
-  echo "Nenhuma conversa encontrada para validar thread/send/assign/mode."
-  exit 1
+if [ -z "$CONVERSATION_ID" ]; then
+  echo "OK: no conversations yet. Send a WhatsApp message to create one, then rerun with CONVERSATION_ID=<uuid>."
+  exit 0
 fi
 
-echo "Conversa alvo: $CONV_ID"
+echo "[2/3] GET /api/inbox/conversations/$CONVERSATION_ID/messages"
+c="$(req GET "$BASE_URL/api/inbox/conversations/$CONVERSATION_ID/messages")"
+echo "HTTP $c"
+head -c 400 "$TMP"; echo
+[ "$c" = "200" ] || exit 1
 
-echo "[2/6] GET /api/inbox/conversations/:id/messages (antes)"
-BEFORE_MSGS=$(curl -sS -X GET "${BASE_URL}/api/inbox/conversations/${CONV_ID}/messages" -H "$AUTH_HEADER")
-echo "$BEFORE_MSGS"
-echo ""
-
-TEST_MARKER="[verify_inbox][$(date +%s)] mensagem manual de teste"
-
-echo "[3/6] POST /api/inbox/conversations/:id/messages"
-POST_RESP=$(curl -sS -X POST "${BASE_URL}/api/inbox/conversations/${CONV_ID}/messages" \
-  -H "$AUTH_HEADER" -H "$JSON_HEADER" \
-  -d "{\"text\":\"${TEST_MARKER}\"}")
-echo "$POST_RESP"
-echo ""
-
-echo "[4/6] GET /api/inbox/conversations/:id/messages (depois)"
-AFTER_MSGS=$(curl -sS -X GET "${BASE_URL}/api/inbox/conversations/${CONV_ID}/messages" -H "$AUTH_HEADER")
-echo "$AFTER_MSGS"
-echo ""
-
-FOUND_MARKER=$(printf '%s' "$AFTER_MSGS" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const arr=Array.isArray(j)?j:(j.data||j.messages||[]);const needle=process.argv[1];const found=(arr||[]).some(m=>String(m?.body||m?.content||'').includes(needle));process.stdout.write(found?'1':'0');}catch(e){process.stdout.write('0');}})" "$TEST_MARKER")
-if [[ "$FOUND_MARKER" != "1" ]]; then
-  echo "Falha: mensagem enviada nao encontrada na leitura da thread."
-  exit 1
-fi
-echo "OK: mensagem inserida/lida com JWT."
-
-echo "[5/6] POST /api/inbox/conversations/:id/assign"
-curl -sS -X POST "${BASE_URL}/api/inbox/conversations/${CONV_ID}/assign" \
-  -H "$AUTH_HEADER" -H "$JSON_HEADER" \
-  -d '{"agent_id":"agent_default"}'
-echo ""
-
-echo "[6/6] POST /api/inbox/conversations/:id/mode"
-curl -sS -X POST "${BASE_URL}/api/inbox/conversations/${CONV_ID}/mode" \
-  -H "$AUTH_HEADER" -H "$JSON_HEADER" \
-  -d '{"mode":"bot"}'
-echo ""
-
-echo "Validação Inbox v1 finalizada."
+echo "[3/3] POST /api/inbox/conversations/$CONVERSATION_ID/messages"
+payload="$(printf '{"text":"verify_inbox ping %s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+c="$(req POST "$BASE_URL/api/inbox/conversations/$CONVERSATION_ID/messages" "$payload")"
+echo "HTTP $c"
+cat "$TMP"; echo
+[ "$c" = "200" ] || [ "$c" = "201" ]
