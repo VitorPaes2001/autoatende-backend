@@ -82,8 +82,39 @@ async function getSubscription(clientId) {
   };
 }
 
+
+/**
+ * Retorna o plano ATIVO do client (usado por plan.middleware).
+ * Fonte: subscriptions (mais recente) + plans (price_cents/name).
+ * Retorno: { plan, status, limits } no formato esperado pelos middlewares.
+ */
+async function getActivePlan(clientId) {
+  const sub = await getSubscription(clientId);
+  if (!sub) return null;
+
+  // só considera plano "ativo" para liberar rotas protegidas
+  if ((sub.status || '').toLowerCase() != 'active') return null;
+
+  const planName = sub.plan?.name || 'Starter';
+
+  return {
+    client_id: sub.client_id,
+    company_id: sub.company_id,
+    provider: sub.provider,
+    status: sub.status,
+    plan: planName, // ex: 'Starter' | 'Pro' | 'Business'
+    limits: {
+      templates: sub.plan?.templates_limit,
+      conversations: sub.plan?.conversations_limit,
+    },
+    plan_id: sub.plan_id,
+  };
+}
+
+
 module.exports = {
   getCompany,
   getCompanyByClientId,
-  getSubscription
+  getSubscription,
+  getActivePlan,
 };
