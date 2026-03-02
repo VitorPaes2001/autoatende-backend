@@ -8,7 +8,7 @@ const connectWhatsApp = async (clientId, data) => {
   }
 
   // Check if phone is used by another client
-  const { data: existingPhone } = await supabase
+  const { data: existingPhone, error: accountError} = await supabase
     .from('whatsapp_accounts')
     .select('client_id')
     .eq('phone_number', phone_number)
