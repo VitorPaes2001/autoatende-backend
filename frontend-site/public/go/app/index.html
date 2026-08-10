@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecionando para o app...</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #08140f;
+        color: #f7fafc;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .box {
+        max-width: 560px;
+        padding: 32px;
+        border-radius: 20px;
+        border: 1px solid rgba(147,255,126,0.16);
+        background: rgba(255,255,255,0.04);
+        text-align: center;
+      }
+      a {
+        color: #93ff7e;
+        text-decoration: none;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h1>Redirecionando para o app...</h1>
+      <p>Você está sendo enviado para o ambiente da AutoAtendeAI.</p>
+      <p><a id="fallback" href="#">Clique aqui se o redirecionamento não acontecer</a></p>
+    </div>
+
+    <script>
+      (function () {
+        const params = new URLSearchParams(window.location.search);
+        const src = encodeURIComponent(params.get('src') || 'unknown');
+        const target = 'https://app.autoatendeai.com.br/?ref=site&src=' + src;
+        document.getElementById('fallback').href = target;
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>

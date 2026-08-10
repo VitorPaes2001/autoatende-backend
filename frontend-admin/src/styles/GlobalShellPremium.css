@@ -1,0 +1,724 @@
+/* ============================================================
+   AUTOATENDEAI — SHELL GLOBAL V2
+   Aplicado a todas as páginas do painel.
+   ============================================================ */
+
+body.aa-shell-v2-active {
+  --aa-shell-v2-contract: 20260701;
+
+  --aa-shell-header-height: 68px;
+  --aa-shell-footer-height: 76px;
+
+  --aa-shell-background: #081410;
+  --aa-shell-border:
+    rgba(111, 153, 135, 0.14);
+
+  --aa-shell-border-active:
+    rgba(38, 181, 111, 0.3);
+
+  --aa-shell-text: #eaf4ef;
+  --aa-shell-muted: #94aa9f;
+  --aa-shell-green: #21bd74;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar {
+  display: flex !important;
+  flex-direction: column !important;
+
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+
+  overflow: hidden !important;
+
+  border: 0 !important;
+  border-right:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(--aa-shell-background) !important;
+
+  box-shadow: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar::before,
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar::after {
+  content: none !important;
+  display: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar * {
+  box-shadow: none !important;
+}
+
+/* Cabeçalho e marca. */
+body.aa-shell-v2-active
+.aa-shell-v2-brand {
+  display: flex !important;
+  align-items: center !important;
+
+  flex: 0 0
+    var(--aa-shell-header-height) !important;
+
+  width: 100% !important;
+
+  height:
+    var(--aa-shell-header-height) !important;
+
+  min-height:
+    var(--aa-shell-header-height) !important;
+
+  max-height:
+    var(--aa-shell-header-height) !important;
+
+  margin: 0 !important;
+  padding: 0 12px !important;
+
+  overflow: hidden !important;
+
+  border: 0 !important;
+  border-bottom:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(--aa-shell-background) !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-brand > * {
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+
+  background: transparent !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-brand
+[class*='brand'],
+body.aa-shell-v2-active
+.aa-shell-v2-brand
+[class*='Brand'],
+body.aa-shell-v2-active
+.aa-shell-v2-brand
+[class*='logo'],
+body.aa-shell-v2-active
+.aa-shell-v2-brand
+[class*='Logo'] {
+  border: 0 !important;
+  border-radius: 0 !important;
+
+  background: transparent !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-brand img {
+  max-width: 34px !important;
+  max-height: 34px !important;
+
+  object-fit: contain !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-brand button {
+  width: 32px !important;
+  height: 32px !important;
+
+  min-width: 32px !important;
+  min-height: 32px !important;
+
+  padding: 0 !important;
+
+  border:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 4px !important;
+
+  background: transparent !important;
+
+  color:
+    var(--aa-shell-muted) !important;
+}
+
+/* Área central da navegação. */
+body.aa-shell-v2-active
+.aa-shell-v2-nav {
+  flex: 1 1 auto !important;
+
+  min-height: 0 !important;
+
+  margin: 0 !important;
+  padding: 12px 10px !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  border: 0 !important;
+  border-radius: 0 !important;
+
+  background:
+    var(--aa-shell-background) !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-nav a,
+body.aa-shell-v2-active
+.aa-shell-v2-nav button {
+  min-height: 42px !important;
+
+  margin: 2px 0 !important;
+  padding: 0 13px !important;
+
+  border:
+    1px solid transparent !important;
+
+  border-radius: 4px !important;
+
+  background: transparent !important;
+
+  color:
+    var(--aa-shell-muted) !important;
+
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-nav a:hover,
+body.aa-shell-v2-active
+.aa-shell-v2-nav button:hover {
+  border-color:
+    var(--aa-shell-border) !important;
+
+  background:
+    rgba(255, 255, 255, 0.025) !important;
+
+  color:
+    var(--aa-shell-text) !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-nav
+a[aria-current='page'],
+body.aa-shell-v2-active
+.aa-shell-v2-nav
+a[href$='/inbox'],
+body.aa-shell-v2-active
+.aa-shell-v2-nav
+.is-active,
+body.aa-shell-v2-active
+.aa-shell-v2-nav
+.active {
+  border-color:
+    var(--aa-shell-border-active) !important;
+
+  background:
+    rgba(30, 164, 99, 0.08) !important;
+
+  color: #a5edc4 !important;
+
+  box-shadow:
+    inset 3px 0 0
+    var(--aa-shell-green) !important;
+}
+
+/* Rodapé alinhado ao composer. */
+body.aa-shell-v2-active
+.aa-shell-v2-footer {
+  display: flex !important;
+  align-items: center !important;
+
+  flex: 0 0
+    var(--aa-shell-footer-height) !important;
+
+  width: 100% !important;
+
+  height:
+    var(--aa-shell-footer-height) !important;
+
+  min-height:
+    var(--aa-shell-footer-height) !important;
+
+  max-height:
+    var(--aa-shell-footer-height) !important;
+
+  margin: 0 !important;
+  padding: 10px 14px !important;
+
+  border: 0 !important;
+  border-top:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(--aa-shell-background) !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button {
+  width: 100% !important;
+  min-height: 42px !important;
+
+  margin: 0 !important;
+  padding: 0 12px !important;
+
+  border:
+    1px solid transparent !important;
+
+  border-radius: 4px !important;
+
+  background: transparent !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a:hover,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button:hover {
+  border-color:
+    var(--aa-shell-border) !important;
+
+  background:
+    rgba(255, 255, 255, 0.025) !important;
+}
+
+/* AA_SHELL_ROUTE_V4_START */
+
+body.aa-shell-v2-active {
+  --aa-shell-route-v4: 1;
+
+  --aa-shell-header-height:
+    var(
+      --aa-shell-measured-header-height,
+      68px
+    );
+
+  --aa-shell-footer-height:
+    var(
+      --aa-shell-measured-footer-height,
+      76px
+    );
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-brand {
+  flex-basis:
+    var(--aa-shell-header-height) !important;
+
+  height:
+    var(--aa-shell-header-height) !important;
+
+  min-height:
+    var(--aa-shell-header-height) !important;
+
+  max-height:
+    var(--aa-shell-header-height) !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer {
+  flex-basis:
+    var(--aa-shell-footer-height) !important;
+
+  height:
+    var(--aa-shell-footer-height) !important;
+
+  min-height:
+    var(--aa-shell-footer-height) !important;
+
+  max-height:
+    var(--aa-shell-footer-height) !important;
+}
+
+/*
+ * Neutralização forte do estado antigo.
+ * Inclui href=/inbox, aria-current e classes antigas.
+ */
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+a[href]:not(.aa-shell-v2-link-active),
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+button:not(.aa-shell-v2-link-active),
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+.active:not(.aa-shell-v2-link-active),
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+.is-active:not(.aa-shell-v2-link-active) {
+  border-color:
+    transparent !important;
+
+  background:
+    transparent !important;
+
+  color:
+    var(--aa-shell-muted) !important;
+
+  box-shadow:
+    none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+a[href]:not(.aa-shell-v2-link-active):hover,
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+button:not(.aa-shell-v2-link-active):hover {
+  border-color:
+    var(--aa-shell-border) !important;
+
+  background:
+    rgba(255, 255, 255, 0.025) !important;
+
+  color:
+    var(--aa-shell-text) !important;
+}
+
+/* Único estado ativo permitido. */
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar
+.aa-shell-v2-nav
+.aa-shell-v2-link-active {
+  border-color:
+    var(--aa-shell-border-active) !important;
+
+  background:
+    rgba(30, 164, 99, 0.08) !important;
+
+  color:
+    #a5edc4 !important;
+
+  box-shadow:
+    inset 3px 0 0
+    var(--aa-shell-green) !important;
+}
+
+/* AA_SHELL_ROUTE_V4_END */
+
+/* AA_SHELL_BOTTOM_FINISH_START
+   Rodapé global alinhado ao composer.
+   ======================================================== */
+
+:root,
+body.aa-shell-v2-active {
+  --aa-shell-bottom-finish: 1;
+
+  /*
+   * Autoridade final sobre o valor inline publicado
+   * pelo Bridge. Evita variação de alguns pixels.
+   */
+  --aa-shell-measured-footer-height:
+    74px !important;
+
+  --aa-shell-footer-height:
+    74px !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer {
+  box-sizing: border-box !important;
+
+  display: flex !important;
+  align-items: center !important;
+
+  flex:
+    0 0
+    var(--aa-shell-footer-height) !important;
+
+  width: 100% !important;
+
+  height:
+    var(--aa-shell-footer-height) !important;
+
+  min-height:
+    var(--aa-shell-footer-height) !important;
+
+  max-height:
+    var(--aa-shell-footer-height) !important;
+
+  margin: 0 !important;
+  padding: 8px 14px !important;
+
+  overflow: hidden !important;
+
+  border: 0 !important;
+  border-top:
+    1px solid
+    rgba(111, 153, 135, 0.14) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(
+      --aa-shell-background,
+      #081410
+    ) !important;
+
+  box-shadow: none !important;
+}
+
+/*
+ * Remove qualquer card ou superfície secundária
+ * deixada por estilos anteriores no rodapé.
+ */
+body.aa-shell-v2-active
+.aa-shell-v2-footer > *,
+body.aa-shell-v2-active
+.aa-shell-v2-footer a,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button,
+body.aa-shell-v2-active
+.aa-shell-v2-footer div {
+  box-sizing: border-box !important;
+
+  background: transparent !important;
+
+  box-shadow: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button {
+  display: flex !important;
+  align-items: center !important;
+
+  width: 100% !important;
+
+  min-height: 42px !important;
+  height: 42px !important;
+
+  margin: 0 !important;
+  padding: 0 12px !important;
+
+  border:
+    1px solid transparent !important;
+
+  border-radius: 4px !important;
+
+  color: #f0a09b !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a:hover,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button:hover {
+  border-color:
+    rgba(111, 153, 135, 0.14) !important;
+
+  background:
+    rgba(255, 255, 255, 0.025) !important;
+}
+
+/* AA_SHELL_BOTTOM_FINISH_END */
+
+/* AA_SHELL_LAYOUT_CANONICAL_V5_START
+   Geometria compartilhada entre menu e Inbox.
+   ======================================================== */
+
+:root,
+body.aa-shell-v2-active {
+  --aa-shell-layout-v5: 1;
+
+  /*
+   * Sobrescreve também os valores publicados inline
+   * pelo Bridge, evitando variações entre renderizações.
+   */
+  --aa-shell-measured-header-height:
+    76px !important;
+
+  --aa-shell-measured-footer-height:
+    80px !important;
+
+  --aa-shell-header-height:
+    76px !important;
+
+  --aa-shell-footer-height:
+    80px !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-sidebar {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(
+      --aa-shell-background,
+      #081410
+    ) !important;
+}
+
+/* Bloco da marca alinhado aos cabeçalhos do Inbox. */
+body.aa-shell-v2-active
+.aa-shell-v2-brand {
+  box-sizing: border-box !important;
+
+  flex:
+    0 0
+    var(--aa-shell-header-height) !important;
+
+  width: 100% !important;
+
+  height:
+    var(--aa-shell-header-height) !important;
+
+  min-height:
+    var(--aa-shell-header-height) !important;
+
+  max-height:
+    var(--aa-shell-header-height) !important;
+
+  margin: 0 !important;
+
+  border: 0 !important;
+  border-bottom:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(
+      --aa-shell-background,
+      #081410
+    ) !important;
+}
+
+/* Navegação ocupa exatamente o espaço entre topo e rodapé. */
+body.aa-shell-v2-active
+.aa-shell-v2-nav {
+  flex: 1 1 auto !important;
+
+  min-height: 0 !important;
+
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+
+  background:
+    var(
+      --aa-shell-background,
+      #081410
+    ) !important;
+}
+
+/* Rodapé alinhado ao composer, sem card externo diferente. */
+body.aa-shell-v2-active
+.aa-shell-v2-footer {
+  box-sizing: border-box !important;
+
+  display: flex !important;
+  align-items: center !important;
+
+  flex:
+    0 0
+    var(--aa-shell-footer-height) !important;
+
+  width: 100% !important;
+
+  height:
+    var(--aa-shell-footer-height) !important;
+
+  min-height:
+    var(--aa-shell-footer-height) !important;
+
+  max-height:
+    var(--aa-shell-footer-height) !important;
+
+  margin: 0 !important;
+  padding: 12px 14px !important;
+
+  overflow: hidden !important;
+
+  border: 0 !important;
+  border-top:
+    1px solid
+    var(--aa-shell-border) !important;
+
+  border-radius: 0 !important;
+
+  background:
+    var(
+      --aa-shell-background,
+      #081410
+    ) !important;
+
+  box-shadow: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer > * {
+  box-sizing: border-box !important;
+
+  width: 100% !important;
+
+  margin: 0 !important;
+
+  background: transparent !important;
+
+  box-shadow: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button {
+  box-sizing: border-box !important;
+
+  display: flex !important;
+  align-items: center !important;
+
+  width: 100% !important;
+
+  height: 48px !important;
+  min-height: 48px !important;
+
+  margin: 0 !important;
+  padding: 0 12px !important;
+
+  border:
+    1px solid transparent !important;
+
+  border-radius: 4px !important;
+
+  background: transparent !important;
+
+  box-shadow: none !important;
+}
+
+body.aa-shell-v2-active
+.aa-shell-v2-footer a:hover,
+body.aa-shell-v2-active
+.aa-shell-v2-footer button:hover {
+  border-color:
+    var(--aa-shell-border) !important;
+
+  background:
+    rgba(255, 255, 255, 0.025) !important;
+}
+
+/* AA_SHELL_LAYOUT_CANONICAL_V5_END */
+

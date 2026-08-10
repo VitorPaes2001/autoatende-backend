@@ -1,8 +1,11 @@
+// __AUTOATENDE_C6C_R4_COMPANY_EMAIL_COLUMN_FIX__
+// __AUTOATENDE_C6C_R1_BILLING_PORTAL_SELF_HEAL__
 const stripe = require('../config/stripe');
 const supabase = require('../config/supabase');
+const { isSupabaseAdminUnavailableError } = supabase;
 const { getCompany, getSubscription } = require('./company.service');
 const metricsService = require('./metrics.service');
-const { getPlanByPriceId, PLANS } = require('../config/plans');
+const { PLANS } = require('../config/plans');
 const overageBillingService = require('./overageBilling.service');
 
 /**
@@ -85,11 +88,32 @@ async function getBillingStatus(companyId, clientId) {
     };
 
     // Uso: use monthly summary (já está consistente no seu DB)
-    const monthlySummary = await overageBillingService.getMonthlyUsageSummary(clientId).catch(() => null);
+    const monthlySummary = await overageBillingService
+      .getMonthlyUsageSummary(clientId)
+      .catch((error) => {
+        if (isSupabaseAdminUnavailableError(error)) throw error;
+        return null;
+      });
 
     const usage = {
       conversations: monthlySummary?.conversations_used || 0,
       templates: monthlySummary?.templates_used || 0,
+      marketingTemplates:
+        monthlySummary?.marketing_templates_used ||
+        monthlySummary?.marketingTemplatesUsed ||
+        0,
+      utilityAuthTemplates:
+        monthlySummary?.utility_auth_templates_used ||
+        monthlySummary?.utilityAuthTemplatesUsed ||
+        0,
+      marketingTemplatesUsed:
+        monthlySummary?.marketing_templates_used ||
+        monthlySummary?.marketingTemplatesUsed ||
+        0,
+      utilityAuthTemplatesUsed:
+        monthlySummary?.utility_auth_templates_used ||
+        monthlySummary?.utilityAuthTemplatesUsed ||
+        0,
       agents: 1
     };
 
@@ -150,12 +174,22 @@ async function getBillingStatus(companyId, clientId) {
       monthlySummary
     };
   } catch (error) {
+    if (isSupabaseAdminUnavailableError(error)) throw error;
+
     console.error('[BillingService] Critical error building status:', error);
     return {
       plan: 'Starter',
       status: 'inactive',
       limits: { conversations: 300, templates: 300, agents: 1 },
-      usage: { conversations: 0, templates: 0, agents: 1 },
+      usage: {
+        conversations: 0,
+        templates: 0,
+        agents: 1,
+        marketingTemplates: 0,
+        utilityAuthTemplates: 0,
+        marketingTemplatesUsed: 0,
+        utilityAuthTemplatesUsed: 0
+      },
       features: {},
       blocked: { isBlocked: false }
     };
@@ -187,6 +221,8 @@ async function syncCustomer(companyId, email) {
       }
     });
     customerId = customer.id;
+
+    await persistStripeCustomerId(company.client_id, customerId);
   }
 
   return customerId;
@@ -195,6 +231,52 @@ async function syncCustomer(companyId, email) {
 /**
  * Cria uma sessão de checkout ou assinatura direta (Opcional, para uso interno)
  */
+
+async function persistStripeCustomerId(clientId, customerId) {
+  if (!clientId || !customerId) return;
+
+  const { data: existingSub, error: existingErr } = await supabase
+    .from('subscriptions')
+    .select('id, stripe_customer_id, created_at')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingErr) {
+    console.warn('[BillingService] persist existingSub error:', existingErr.message);
+  }
+
+  if (existingSub?.id) {
+    if (existingSub.stripe_customer_id === customerId) return;
+
+    const { error: updateErr } = await supabase
+      .from('subscriptions')
+      .update({ stripe_customer_id: customerId })
+      .eq('id', existingSub.id);
+
+    if (updateErr) {
+      console.warn('[BillingService] persist updateErr:', updateErr.message);
+    }
+    return;
+  }
+
+  const payload = {
+    client_id: clientId,
+    stripe_customer_id: customerId,
+    provider: 'stripe',
+    status: 'inactive'
+  };
+
+  const { error: insertErr } = await supabase
+    .from('subscriptions')
+    .insert(payload);
+
+  if (insertErr) {
+    console.warn('[BillingService] persist insertErr:', insertErr.message);
+  }
+}
+
 async function createSubscription(companyId, priceId) {
   const company = await getCompany(companyId);
   if (!company) throw new Error('Company not found');
@@ -214,161 +296,260 @@ async function createSubscription(companyId, priceId) {
   return subscription;
 }
 
-/**
- * Processa Webhook do Stripe
- */
-async function handleWebhook(event) {
-  const type = event.type;
-  const data = event.data.object;
+const WEBHOOK_EVENT_OPERATIONS = Object.freeze({
+  'customer.subscription.created': 'subscription_change',
+  'customer.subscription.updated': 'subscription_change',
+  'customer.subscription.deleted': 'subscription_change',
+});
 
-  console.log(`[Billing] Processing webhook: ${type}`);
+const SUPPORTED_WEBHOOK_EVENT_TYPES = Object.freeze(
+  Object.keys(WEBHOOK_EVENT_OPERATIONS)
+);
 
-  switch (type) {
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-    case 'customer.subscription.deleted':
-      await handleSubscriptionChange(data);
-      break;
-
-    case 'invoice.payment_succeeded':
-      await handlePaymentSucceeded(data);
-      break;
-
-    case 'invoice.payment_failed':
-      await handlePaymentFailed(data);
-      break;
-
-    default:
-      console.log(`[Billing] Ignoring unsupported webhook event: ${type}`);
-  }
+function isSupportedWebhookEventType(type) {
+  return (
+    typeof type === 'string' &&
+    Object.prototype.hasOwnProperty.call(WEBHOOK_EVENT_OPERATIONS, type)
+  );
 }
 
-/**
- * Sincroniza o plano definido no código com a tabela 'plans' no banco
- * Retorna o ID do plano no banco.
- */
-async function syncPlanToDatabase(planConfig) {
-  // Upsert do plano na tabela 'plans' para garantir que os limites estejam atualizados
-  const { data, error } = await supabase
-    .from('plans')
-    .upsert({
-      name: planConfig.name,
-      stripe_price_id: planConfig.stripePriceId, // Pode ser null se for plano custom/free sem stripe
-      conversations_limit: planConfig.limits.conversations,
-      templates_limit: planConfig.limits.templates,
-      // Se houver mais campos na tabela plans, eles ficarão como estão ou null
-    }, { onConflict: 'name' }) // Assumindo que 'name' é unique. Se não for, precisaríamos de outro identificador.
-    .select('id')
-    .single();
+function getSupportedWebhookEventTypes() {
+  return SUPPORTED_WEBHOOK_EVENT_TYPES;
+}
 
-  if (error) {
-    console.error(`[Billing] Error syncing plan ${planConfig.name} to DB:`, error);
-    // Tenta buscar se o upsert falhar (ex: constraint violation não tratada)
-    const { data: existing } = await supabase
+function makeBillingWebhookError(code, message, eventType, { retryable = true } = {}) {
+  const error = new Error(message);
+  error.name = 'BillingWebhookError';
+  error.code = code;
+  error.statusCode = 503;
+  error.retryable = retryable;
+  error.eventType = eventType || null;
+  return error;
+}
+
+function isBillingWebhookError(error) {
+  return error?.name === 'BillingWebhookError' && typeof error?.code === 'string';
+}
+
+function normalizedText(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function usableIdentifier(value) {
+  return (
+    (typeof value === 'string' || typeof value === 'number') &&
+    String(value).trim().length > 0
+  );
+}
+
+function createBillingWebhookService({
+  stripeClient = stripe,
+  supabaseClient = supabase,
+  planCatalog = PLANS,
+  logger = console,
+} = {}) {
+  function strictPlanByPriceId(priceId, eventType) {
+    const plan = Object.values(planCatalog || {}).find(
+      (candidate) => candidate?.stripePriceId === priceId
+    );
+
+    if (!plan) {
+      throw makeBillingWebhookError(
+        'BILLING_PLAN_MAPPING_NOT_FOUND',
+        'Billing plan mapping was not found.',
+        eventType
+      );
+    }
+
+    return plan;
+  }
+
+  async function syncWebhookPlanToDatabase(planConfig, eventType) {
+    const { data, error } = await supabaseClient
       .from('plans')
+      .upsert({
+        name: planConfig.name,
+        stripe_price_id: planConfig.stripePriceId,
+        conversations_limit: planConfig.limits.conversations,
+        templates_limit: planConfig.limits.templates,
+      }, { onConflict: 'name' })
       .select('id')
-      .eq('name', planConfig.name)
-      .maybeSingle();
-      
-    if (existing) return existing.id;
-    throw error;
+      .single();
+
+    if (error || !usableIdentifier(data?.id)) {
+      throw makeBillingWebhookError(
+        'BILLING_PLAN_PERSIST_FAILED',
+        'Billing plan could not be persisted.',
+        eventType
+      );
+    }
+
+    return data.id;
   }
 
-  return data.id;
-}
+  async function processSubscriptionChange(stripeSubscription, eventType = null) {
+    if (!stripeSubscription || typeof stripeSubscription !== 'object' || Array.isArray(stripeSubscription)) {
+      throw makeBillingWebhookError(
+        'BILLING_SUBSCRIPTION_DATA_INVALID',
+        'Stripe subscription payload is invalid.',
+        eventType,
+        { retryable: false }
+      );
+    }
 
-/**
- * Trata mudanças na assinatura
- */
-async function handleSubscriptionChange(stripeSubscription) {
-  const customerId = stripeSubscription.customer;
-  const status = stripeSubscription.status;
-  const priceId = stripeSubscription.items.data[0].price.id;
+    const subscriptionId = normalizedText(stripeSubscription.id);
+    const customerId = normalizedText(
+      typeof stripeSubscription.customer === 'object'
+        ? stripeSubscription.customer?.id
+        : stripeSubscription.customer
+    );
+    const status = normalizedText(stripeSubscription.status);
+    const priceId = normalizedText(stripeSubscription.items?.data?.[0]?.price?.id);
 
-  // 1. Identificar Cliente
-  // Tenta pelo metadata da subscription primeiro
-  let clientId = stripeSubscription.metadata?.clientId;
+    if (!subscriptionId || !customerId || !status || !priceId) {
+      throw makeBillingWebhookError(
+        'BILLING_SUBSCRIPTION_DATA_INVALID',
+        'Stripe subscription payload is missing required data.',
+        eventType,
+        { retryable: false }
+      );
+    }
 
-  if (!clientId) {
-    // Busca no customer
-    const customer = await stripe.customers.retrieve(customerId);
-    clientId = customer.metadata?.clientId;
-  }
+    let clientId = normalizedText(stripeSubscription.metadata?.clientId);
 
-  if (!clientId) {
-    // Tenta buscar na tabela subscriptions pelo stripe_customer_id
-    const { data: sub } = await supabase
+    if (!clientId) {
+      const customer = await stripeClient.customers.retrieve(customerId);
+      clientId = normalizedText(customer?.metadata?.clientId);
+    }
+
+    if (!clientId) {
+      const { data: existingSubscription, error: lookupError } = await supabaseClient
+        .from('subscriptions')
+        .select('client_id')
+        .eq('stripe_customer_id', customerId)
+        .maybeSingle();
+
+      if (lookupError) {
+        throw makeBillingWebhookError(
+          'BILLING_SUBSCRIPTION_LOOKUP_FAILED',
+          'Billing subscription lookup failed.',
+          eventType
+        );
+      }
+
+      clientId = normalizedText(existingSubscription?.client_id);
+    }
+
+    if (!clientId) {
+      throw makeBillingWebhookError(
+        'BILLING_CLIENT_NOT_FOUND',
+        'Billing client could not be resolved.',
+        eventType
+      );
+    }
+
+    const planConfig = strictPlanByPriceId(priceId, eventType);
+    const planId = await syncWebhookPlanToDatabase(planConfig, eventType);
+    const { error: persistenceError } = await supabaseClient
       .from('subscriptions')
-      .select('client_id')
-      .eq('stripe_customer_id', customerId)
-      .maybeSingle();
-    
-    if (sub) clientId = sub.client_id;
+      .upsert({
+        client_id: clientId,
+        stripe_subscription_id: subscriptionId,
+        stripe_customer_id: customerId,
+        status,
+        plan_id: planId,
+        updated_at: new Date(),
+      }, { onConflict: 'client_id' });
+
+    if (persistenceError) {
+      throw makeBillingWebhookError(
+        'BILLING_SUBSCRIPTION_PERSIST_FAILED',
+        'Billing subscription could not be persisted.',
+        eventType
+      );
+    }
+
+    await logBillingEvent(
+      clientId,
+      'subscription_update',
+      { status, plan: planConfig.name },
+      logger
+    );
+
+    return {
+      ok: true,
+      clientId,
+      subscriptionId,
+    };
   }
 
-  if (!clientId) {
-    console.error(`[Billing] Client ID not found for customer ${customerId}`);
-    return;
+  async function strictHandleWebhook(event) {
+    const eventType = normalizedText(event?.type);
+
+    if (!isSupportedWebhookEventType(eventType)) {
+      return {
+        ok: false,
+        handled: false,
+        eventType,
+        code: 'UNSUPPORTED_EVENT',
+      };
+    }
+
+    const data = event?.data?.object;
+
+    try {
+      const operation = WEBHOOK_EVENT_OPERATIONS[eventType];
+
+      if (operation !== 'subscription_change') {
+        throw makeBillingWebhookError(
+          'BILLING_WEBHOOK_CONTRACT_INVALID',
+          'Billing webhook contract has no implemented operation.',
+          eventType,
+          { retryable: false }
+        );
+      }
+
+      await processSubscriptionChange(data, eventType);
+    } catch (error) {
+      if (isSupabaseAdminUnavailableError(error)) throw error;
+      if (isBillingWebhookError(error)) throw error;
+
+      throw makeBillingWebhookError(
+        'BILLING_WEBHOOK_OPERATION_FAILED',
+        'Billing webhook operation failed.',
+        eventType
+      );
+    }
+
+    return {
+      ok: true,
+      handled: true,
+      eventType,
+    };
   }
 
-  // 2. Identificar Plano
-  const planConfig = getPlanByPriceId(priceId);
-  console.log(`[Billing] Detected plan ${planConfig.name} for client ${clientId}`);
-
-  // 3. Sincronizar Plano com DB
-  const planId = await syncPlanToDatabase(planConfig);
-
-  // 4. Atualizar Assinatura
-  const { error } = await supabase
-    .from('subscriptions')
-    .upsert({
-      client_id: clientId,
-      stripe_subscription_id: stripeSubscription.id,
-      stripe_customer_id: customerId,
-      status: status,
-      plan_id: planId,
-      updated_at: new Date()
-    }, { onConflict: 'client_id' });
-
-  if (error) {
-    console.error('[Billing] Error updating subscription:', error);
-  } else {
-    console.log(`[Billing] Subscription updated for client ${clientId}: ${status} (${planConfig.name})`);
-    await logBillingEvent(clientId, 'subscription_update', { status, plan: planConfig.name });
-  }
+  return {
+    getSupportedWebhookEventTypes,
+    isSupportedWebhookEventType,
+    handleWebhook: strictHandleWebhook,
+    handleSubscriptionChange: processSubscriptionChange,
+  };
 }
 
-/**
- * Trata pagamento com sucesso
- */
-async function handlePaymentSucceeded(invoice) {
-  const subscriptionId = invoice.subscription;
-  if (!subscriptionId) return;
+const defaultBillingWebhookService = createBillingWebhookService();
 
-  // Se o status estava past_due, ele deve mudar para active via webhook subscription.updated.
-  // Aqui apenas logamos e garantimos consistência se necessário.
-  console.log(`[Billing] Payment succeeded for subscription ${subscriptionId}`);
-  
-  // Opcional: Se quiséssemos forçar status 'active' aqui, mas o 'subscription.updated' é mais confiável.
+async function handleWebhook(event) {
+  return defaultBillingWebhookService.handleWebhook(event);
 }
 
-/**
- * Trata falha de pagamento
- */
-async function handlePaymentFailed(invoice) {
-  const subscriptionId = invoice.subscription;
-  if (!subscriptionId) return;
-
-  console.warn(`[Billing] Payment failed for subscription ${subscriptionId}`);
-  
-  // Identificar cliente para logar
-  // A atualização de status para 'past_due' virá no evento customer.subscription.updated
+async function handleSubscriptionChange(stripeSubscription) {
+  return defaultBillingWebhookService.handleSubscriptionChange(stripeSubscription);
 }
 
 /**
  * Log de Auditoria de Billing
  */
-async function logBillingEvent(clientId, event, details) {
+async function logBillingEvent(clientId, event, details, logger = console) {
   // Poderia ser uma tabela 'billing_audit'
   // Por enquanto, vamos usar console estruturado ou tabela 'audit_logs' se existir
   // O prompt pediu "Billing Audit", vamos assumir console + inserção se houver tabela
@@ -380,7 +561,7 @@ async function logBillingEvent(clientId, event, details) {
     timestamp: new Date()
   };
 
-  console.log('[Billing Audit]', JSON.stringify(logEntry));
+  logger.log('[Billing Audit]', JSON.stringify(logEntry));
 
   // Tenta inserir na tabela audit_logs se existir (best effort)
   /*
@@ -396,6 +577,9 @@ async function logBillingEvent(clientId, event, details) {
 module.exports = {
   syncCustomer,
   createSubscription,
+  createBillingWebhookService,
+  getSupportedWebhookEventTypes,
+  isSupportedWebhookEventType,
   handleWebhook,
   handleSubscriptionChange, // Exportado para testes ou chamadas manuais
   createPortalSession,
@@ -405,20 +589,81 @@ module.exports = {
 /**
  * Cria sessão do Portal do Cliente (Self-service)
  */
+
+async function resolveBillingCustomerEmail(companyId, clientId) {
+  try {
+    const { data: userRow, error: userErr } = await supabase
+      .from('users')
+      .select('email')
+      .eq('company_id', companyId)
+      .limit(1)
+      .maybeSingle();
+
+    if (userErr) {
+      console.warn('[BillingService] resolveBillingCustomerEmail userErr:', userErr.message);
+    }
+
+    if (userRow?.email) {
+      return userRow.email;
+    }
+  } catch (err) {
+    if (isSupabaseAdminUnavailableError(err)) throw err;
+
+    console.warn('[BillingService] resolveBillingCustomerEmail unexpected:', err?.message || err);
+  }
+
+  return `company_${clientId || companyId}@example.com`;
+}
+
 async function createPortalSession(clientId, returnUrl) {
-  // Buscar stripe_customer_id
-  const { data: sub } = await supabase
+  let { data: sub, error: subErr } = await supabase
     .from('subscriptions')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, created_at')
     .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (!sub || !sub.stripe_customer_id) {
-    throw new Error('Customer not found in billing system');
+  if (subErr) {
+    console.warn('[BillingService] createPortalSession subErr:', subErr.message);
+  }
+
+  let customerId = sub?.stripe_customer_id || null;
+
+  if (!customerId) {
+    const { data: company, error: companyErr } = await supabase
+      .from('companies')
+      .select('id, client_id')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    if (companyErr) {
+      console.warn('[BillingService] createPortalSession companyErr:', companyErr.message);
+    }
+
+    if (!company?.id) {
+      throw new Error('Company not found for billing portal');
+    }
+
+    const resolvedEmail = await resolveBillingCustomerEmail(
+      company.id,
+      company.client_id || clientId
+    );
+
+    customerId = await syncCustomer(
+      company.id,
+      resolvedEmail
+    );
+
+    if (!customerId) {
+      throw new Error('Unable to provision billing customer');
+    }
+
+    await persistStripeCustomerId(clientId, customerId);
   }
 
   const session = await stripe.billingPortal.sessions.create({
-    customer: sub.stripe_customer_id,
+    customer: customerId,
     return_url: returnUrl,
   });
 

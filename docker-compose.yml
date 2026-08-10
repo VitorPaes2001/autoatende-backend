@@ -54,6 +54,8 @@ services:
     networks:
       - whatsapp-net
 
+    volumes:
+      - /opt/autoatende/data:/app/data
   whatsapp-nginx:
     image: nginx:alpine
     container_name: whatsapp-nginx
@@ -70,6 +72,8 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
 
+      - /opt/autoatende/frontend-admin/dist:/usr/share/nginx/html:ro
+      - /opt/autoatende/frontend-site/dist:/usr/share/nginx/html-root:ro
     networks:
       - whatsapp-net
 

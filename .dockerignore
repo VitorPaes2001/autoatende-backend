@@ -31,3 +31,22 @@ coverage
 # Documentation
 README.md
 docs
+frontend-admin/node_modules
+frontend-admin/dist
+backups
+.git/*
+*.log
+tmp
+tmp/*
+
+# __AUTOATENDE_STRIPE_PHASE2R_D4C_DOCKERIGNORE_DISK_FIX__
+# Evita enviar histórico operacional, backups e logs para o build context Docker.
+backups
+backups/
+*.log
+logs
+logs/
+nginx/conf.d/ops-surface/history
+nginx/conf.d/ops-surface/history/
+nginx/conf.d/ops-surface/history/*.json
+nginx/conf.d/ops-surface/history/**/*.json
