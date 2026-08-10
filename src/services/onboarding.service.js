@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../../utils/logger');
 
+const { getCompanyCommercialProfile } = require("./companyCommercialProfile.service");
+
 // Store onboarding data in a JSON file since we cannot alter DB schema
 const STORE_PATH = path.join(__dirname, '../../data/onboarding_store.json');
 
@@ -20,6 +22,29 @@ if (!fs.existsSync(STORE_PATH)) {
  * @param {string} companyId 
  * @param {Object} data 
  */
+/* __AUTOATENDE_C1B_DB_FIRST_PROFILE__ */
+async function resolveCommercialProfileDbFirst(companyId, fallbackProfile = null) {
+  try {
+    const profile = await getCompanyCommercialProfile(companyId);
+    if (profile && profile.source && profile.source !== "empty") {
+      try {
+        console.info(`[C1B] commercial_profile_source ${JSON.stringify({ company_id: companyId, source: profile.source })}`);
+      } catch (_) {}
+      return profile;
+    }
+  } catch (error) {
+    try {
+      console.warn(`[C1B] commercial_profile_fallback_error ${JSON.stringify({ company_id: companyId, error: String(error?.message || error) })}`);
+    } catch (_) {}
+  }
+
+  try {
+    console.info(`[C1B] commercial_profile_source ${JSON.stringify({ company_id: companyId, source: "legacy_fallback" })}`);
+  } catch (_) {}
+
+  return fallbackProfile;
+}
+
 async function saveOnboardingData(companyId, data) {
   try {
     const store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
@@ -43,7 +68,7 @@ async function saveOnboardingData(companyId, data) {
 async function getOnboardingData(companyId) {
   try {
     const store = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
-    return store[companyId] || null;
+    return await resolveCommercialProfileDbFirst(companyId, store[companyId] || null);
   } catch (error) {
     logger.error('[Onboarding] Failed to get data', error);
     return null;
@@ -54,6 +79,42 @@ async function getOnboardingData(companyId) {
  * Gera o System Prompt final baseado nos dados de onboarding
  * @param {Object} data 
  */
+
+/* __AUTOATENDE_C16N_C12C_R5_FIX_PROMPT_VALUE_NORMALIZATION__ */
+function aaC12cR5NormalizePromptPrimitive(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
+  return '';
+}
+
+function aaC12cR5NormalizePromptText(value, fallback = '') {
+  const primitive = aaC12cR5NormalizePromptPrimitive(value);
+  if (primitive) return primitive;
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => aaC12cR5NormalizePromptText(item, ''))
+      .filter(Boolean);
+    return parts.join(', ') || fallback;
+  }
+
+  if (value && typeof value === 'object') {
+    const parts = Object.entries(value)
+      .map(([key, raw]) => {
+        const normalized = aaC12cR5NormalizePromptText(raw, '');
+        if (!normalized) return '';
+        return `${key}: ${normalized}`;
+      })
+      .filter(Boolean);
+
+    return parts.join(' | ') || fallback;
+  }
+
+  return fallback;
+}
+
+
 function buildSystemPrompt(data) {
   if (!data) return "Você é um assistente virtual útil.";
 
@@ -174,3 +235,76 @@ async function processOnboardingStep(companyId, from, userText) {
     message: nextMessage
   };
 }
+
+/* __AUTOATENDE_B65_ONBOARDING_PROMPT_HARDEN__ */
+
+function buildSystemPrompt(data) {
+  if (!data) {
+    return [
+      'Você é um assistente virtual comercial e operacional útil.',
+      'Responda em português do Brasil.',
+      'Se houver contexto suficiente, responda diretamente.',
+      'Não reinicie a conversa com saudação genérica se o cliente já estiver em uma conversa em andamento.',
+      'Não invente preços, funcionalidades, integrações, prazos ou condições comerciais.'
+    ].join('\n');
+  }
+
+  const companyName = String(data.company_name || 'Nossa Empresa').trim();
+  const companyContext = aaC12cR5NormalizePromptText(data.company_context, '');
+  const services = aaC12cR5NormalizePromptText(data.services, '');
+  const targetAudience = aaC12cR5NormalizePromptText(data.target_audience, '');
+  const tone = aaC12cR5NormalizePromptText(data.tone, 'Profissional, consultivo, objetivo e cordial');
+  const escalationRules = aaC12cR5NormalizePromptText(data.escalation_rules, 'Se o cliente pedir humano ou houver exceção relevante, sinalize encaminhamento para atendimento humano.');
+  const forbiddenTopics = aaC12cR5NormalizePromptText(data.forbidden_topics, '');
+  const faqBase = aaC12cR5NormalizePromptText(data.faq_base, '');
+  const assistantGuidance = aaC12cR5NormalizePromptText(data.assistant_guidance, '');
+
+  return `
+Você é o assistente virtual da empresa ${companyName}.
+
+OBJETIVO PRINCIPAL:
+Ajudar clientes com clareza, objetividade e segurança comercial, usando apenas informações confirmadas no contexto disponível.
+
+CONTEXTO DA EMPRESA:
+${companyContext || 'Contexto não informado.'}
+
+O QUE VENDEMOS/OFERECEMOS:
+${services || 'Serviços não informados.'}
+
+PÚBLICO-ALVO:
+${targetAudience || 'Público-alvo não informado.'}
+
+TOM DE VOZ:
+${tone}
+
+REGRAS DE ESCALONAMENTO (HUMANO):
+${escalationRules}
+
+TÓPICOS PROIBIDOS:
+${forbiddenTopics || 'Não inventar informações.'}
+
+BASE DE CONHECIMENTO (FAQ):
+${faqBase || 'Base comercial ainda não informada.'}
+
+ORIENTAÇÃO ADICIONAL DO NEGÓCIO:
+${assistantGuidance || 'Explique valor com clareza, sem exagero comercial.'}
+
+REGRAS DE RESPOSTA COMERCIAL:
+1. Se a pergunta puder ser respondida com o contexto disponível, responda diretamente.
+2. Ao falar de planos, use apenas os valores, limites e regras que estiverem explicitamente na base de conhecimento.
+3. Não invente implantação imediata, disponibilidade comercial imediata, integrações não confirmadas, prazos ou condições especiais.
+4. Se faltar dado essencial, faça apenas uma pergunta curta e objetiva.
+5. Se a conversa já estiver em andamento, não recomece com saudação genérica.
+6. Sempre priorize utilidade real: explicar o que a solução faz, para quem serve, como ajuda e quais são os planos quando isso estiver no contexto.
+7. Se houver dúvida sobre contratação, implantação ou condição comercial atual, deixe claro que a confirmação final depende de validação comercial.
+8. Nunca contradiga informações já dadas por atendimento humano anterior presentes no contexto interno.
+
+DIRETRIZES GERAIS:
+1. Responda sempre em português do Brasil.
+2. Seja conciso, claro e consultivo.
+3. Não invente preços, serviços ou políticas fora da base.
+4. Quando não souber algo com segurança, admita a limitação e ofereça encaminhamento humano.
+`.trim();
+}
+
+module.exports.buildSystemPrompt = buildSystemPrompt;

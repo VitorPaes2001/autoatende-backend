@@ -10,7 +10,7 @@ function getPeriod(date = new Date()) {
 async function getMonthlyUsage(clientId, { month, year }) {
   const { data } = await supabase
     .from('monthly_usage')
-    .select('templates_used, conversations_used, overage_templates')
+    .select('templates_used, conversations_used, overage_templates, marketing_templates_used, utility_auth_templates_used')
     .eq('client_id', clientId)
     .eq('month', month)
     .eq('year', year)
@@ -19,9 +19,13 @@ async function getMonthlyUsage(clientId, { month, year }) {
   return {
     templatesUsed: data?.templates_used || 0,
     conversationsUsed: data?.conversations_used || 0,
-    overageTemplates: data?.overage_templates || 0
+    overageTemplates: data?.overage_templates || 0,
+    marketingTemplatesUsed: data?.marketing_templates_used || 0,
+    utilityAuthTemplatesUsed: data?.utility_auth_templates_used || 0
   };
 }
+
+/* __AUTOATENDE_C10G_R3D_OVERAGE_REAL_CATEGORY_READ__ */
 
 async function getPlanLimitByClient(clientId) {
   const subscription = await companyService.getSubscription(clientId);
@@ -46,11 +50,35 @@ async function getMonthlyUsageSummary(clientId, period = getPeriod()) {
   return {
     year: period.year,
     month: period.month,
+
     templatesLimit: planTemplatesLimit,
-    templatesUsed: usage.templatesUsed,
-    conversationsUsed: usage.conversationsUsed,
-    overageTemplates: Math.max(usage.overageTemplates, computedOverage),
-    overageAmountBrlCents: Math.max(usage.overageTemplates, computedOverage) * OVERAGE_TEMPLATE_PRICE_BRL_CENTS,
+
+    templatesUsed: usage.templatesUsed ?? 0,
+    conversationsUsed: usage.conversationsUsed ?? 0,
+
+    templates_used: usage.templatesUsed ?? 0,
+    conversations_used: usage.conversationsUsed ?? 0,
+
+    marketing_templates_used:
+      usage.marketing_templates_used ??
+      usage.marketingTemplatesUsed ??
+      0,
+    utility_auth_templates_used:
+      usage.utility_auth_templates_used ??
+      usage.utilityAuthTemplatesUsed ??
+      0,
+
+    marketingTemplatesUsed:
+      usage.marketing_templates_used ??
+      usage.marketingTemplatesUsed ??
+      0,
+    utilityAuthTemplatesUsed:
+      usage.utility_auth_templates_used ??
+      usage.utilityAuthTemplatesUsed ??
+      0,
+
+    overageTemplates: Math.max(usage.overageTemplates ?? 0, computedOverage),
+    overageAmountBrlCents: Math.max(usage.overageTemplates ?? 0, computedOverage) * OVERAGE_TEMPLATE_PRICE_BRL_CENTS,
     overageUnitAmountBrlCents: OVERAGE_TEMPLATE_PRICE_BRL_CENTS
   };
 }

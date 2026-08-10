@@ -5,28 +5,44 @@ const dotenv = require('dotenv');
 
 // Load frontend-admin .env
 const envPath = path.join(__dirname, '../frontend-admin/.env');
+if (!fs.existsSync(envPath)) {
+  console.error('Missing required frontend environment file: frontend-admin/.env');
+  process.exit(1);
+}
 const envConfig = dotenv.parse(fs.readFileSync(envPath));
 
 const SUPABASE_URL = envConfig.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = envConfig.VITE_SUPABASE_ANON_KEY;
+const AUTH_TEST_EMAIL = String(process.env.AUTOATENDE_FRONTEND_AUTH_TEST_EMAIL || '').trim();
+const AUTH_TEST_PASSWORD = String(process.env.AUTOATENDE_FRONTEND_AUTH_TEST_PASSWORD || '');
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error('❌ Missing Supabase credentials in frontend-admin/.env');
+const requiredConfiguration = [
+  ['VITE_SUPABASE_URL', SUPABASE_URL],
+  ['VITE_SUPABASE_ANON_KEY', SUPABASE_ANON_KEY],
+  ['AUTOATENDE_FRONTEND_AUTH_TEST_EMAIL', AUTH_TEST_EMAIL],
+  ['AUTOATENDE_FRONTEND_AUTH_TEST_PASSWORD', AUTH_TEST_PASSWORD],
+];
+const missingConfiguration = requiredConfiguration
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (missingConfiguration.length > 0) {
+  console.error('Missing required environment configuration: ' + missingConfiguration.join(', '));
   process.exit(1);
 }
 
-console.log('✅ Loaded credentials from frontend-admin/.env');
+console.log('✅ Loaded Supabase frontend configuration and explicit auth test credentials');
 console.log(`   URL: ${SUPABASE_URL}`);
-console.log(`   Key: ${SUPABASE_ANON_KEY.substring(0, 10)}...`);
+console.log('   Supabase anon key configured: yes');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function testAuth() {
-  console.log('\n🔄 Testing Authentication for vitor.escocard@gmail.com...');
+  console.log('Testing configured frontend auth credentials...');
   
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: 'vitor.escocard@gmail.com',
-    password: 'TemporaryPassword123!',
+    email: AUTH_TEST_EMAIL,
+    password: AUTH_TEST_PASSWORD,
   });
 
   if (error) {

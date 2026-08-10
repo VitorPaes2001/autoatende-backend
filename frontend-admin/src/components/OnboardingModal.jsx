@@ -93,7 +93,7 @@ const OnboardingModal = () => {
               </button>
             </div>
             <h2 className="text-2xl font-bold">
-              {step === 1 && "Bem-vindo ao AutoAtende AI! 🚀"}
+              {step === 1 && "Bem-vindo ao AutoAtendeAI! 🚀"}
               {step === 2 && "Conheça seu Plano 💎"}
               {step === 3 && "Dicas Importantes 💡"}
             </h2>
@@ -188,7 +188,7 @@ const OnboardingModal = () => {
                 <div>
                   <h3 className="font-bold text-green-800">Tudo Pronto!</h3>
                   <p className="text-sm text-green-700 mt-1">
-                    Você já pode começar a usar o AutoAtende AI. Se precisar de mais recursos, basta fazer upgrade no menu "Meu Plano".
+                    Você já pode começar a usar o AutoAtendeAI. Se precisar de mais recursos, basta fazer upgrade no menu "Meu Plano".
                   </p>
                 </div>
               </div>

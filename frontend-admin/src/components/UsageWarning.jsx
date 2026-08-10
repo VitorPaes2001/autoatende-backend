@@ -1,8 +1,31 @@
+/* __AUTOATENDE_ASSISTANT_CENTRAL_STATUS_USAGE_UI_V20_C1_R3__ */
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AlertTriangle, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { analytics } from '../lib/analytics';
+
+
+function aaUsageSafePercent(
+  usedValue,
+  limitValue
+) {
+  const used = Number(usedValue);
+  const limit = Number(limitValue);
+
+  if (
+    !Number.isFinite(used) ||
+    !Number.isFinite(limit) ||
+    limit <= 0
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    (used / limit) * 100
+  );
+}
 
 const UsageWarning = () => {
   const [status, setStatus] = useState(null);
@@ -35,9 +58,10 @@ const UsageWarning = () => {
   useEffect(() => {
     if (!status || trackedRef.current) return;
 
-    const { usage, limits } = status;
-    const convPercent = (usage.conversations / limits.conversations) * 100;
-    const tempPercent = (usage.templates / limits.templates) * 100;
+    const usage = status?.usage || {};
+    const limits = status?.limits || {};
+    const convPercent = aaUsageSafePercent(usage?.conversations, limits?.conversations);
+    const tempPercent = aaUsageSafePercent(usage?.templates, limits?.templates);
     const maxPercent = Math.max(convPercent, tempPercent);
 
     if (maxPercent >= 90) {
@@ -61,11 +85,12 @@ const UsageWarning = () => {
 
   if (!status || !visible) return null;
 
-  const { usage, limits } = status;
+  const usage = status?.usage || {};
+  const limits = status?.limits || {};
   
   // Calculate percentages
-  const convPercent = (usage.conversations / limits.conversations) * 100;
-  const tempPercent = (usage.templates / limits.templates) * 100;
+  const convPercent = aaUsageSafePercent(usage?.conversations, limits?.conversations);
+  const tempPercent = aaUsageSafePercent(usage?.templates, limits?.templates);
   
   const maxPercent = Math.max(convPercent, tempPercent);
   const resourceName = convPercent > tempPercent ? 'conversas' : 'templates';
