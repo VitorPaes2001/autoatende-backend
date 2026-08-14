@@ -1,5 +1,7 @@
 const supabase = require('../config/supabase');
 const companyService = require('./company.service');
+// __AUTOATENDE_C10E_R1_METRICS_OVERVIEW_COMMERCIAL_METADATA__
+const { getCommercialPlanByAnyKey, COMMERCIAL_ADDONS } = require('../config/plans');
 const AppError = require('../utils/AppError');
 
 /**
@@ -125,6 +127,44 @@ async function getCompanyOverview(companyId) {
     overview.attendance.bot_percent = parseFloat(((botCount / total) * 100).toFixed(1));
     overview.attendance.human_percent = parseFloat(((humanCount / total) * 100).toFixed(1));
   }
+// __AUTOATENDE_C10E_R1_FIX_FINANCIAL_PLAN_FALLBACK__
+const commercialPlanSource =
+  subscription?.plan?.key ||
+  subscription?.plan?.name ||
+  overview?.financial?.plan ||
+  overview?.plan?.key ||
+  overview?.plan?.name ||
+  overview?.plan ||
+  null;
+
+const commercial = getCommercialPlanByAnyKey(commercialPlanSource);
+
+overview.commercial = commercial || null;
+overview.commercialAddons = COMMERCIAL_ADDONS || [];
+overview.planDisplayName =
+  commercial?.displayName ||
+  overview.planDisplayName ||
+  overview?.financial?.plan ||
+  overview?.plan?.displayName ||
+  overview?.plan?.name ||
+  overview?.plan ||
+  null;
+
+if (overview?.financial) {
+  overview.financial.planDisplayName =
+    commercial?.displayName ||
+    overview?.financial?.planDisplayName ||
+    overview?.financial?.plan ||
+    null;
+}
+
+if (commercial?.included?.templatesTotal != null && overview?.usage?.templates) {
+  overview.usage.templates.total = commercial.included.templatesTotal;
+}
+
+if (commercial?.included?.agents != null && overview?.usage?.agents) {
+  overview.usage.agents.total = commercial.included.agents;
+}
 
   return overview;
 }

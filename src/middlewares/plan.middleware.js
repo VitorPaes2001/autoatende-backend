@@ -1,38 +1,34 @@
-const companyService = require('../services/company.service');
-const AppError = require('../utils/AppError');
-const { isPlanAtLeast, PLANS } = require('../config/plans');
-const supabase = require('../config/supabase'); // Para verificar contagem de agentes
+const companyService = require("../services/company.service");
+const AppError = require("../utils/AppError");
+const { isPlanAtLeast, PLANS, getCommercialPlanByAnyKey, getPlanByName } = require("../config/plans");
+const supabase = require("../config/supabase");
 
 /**
  * Middleware para garantir que a empresa tenha um plano mínimo
- * @param {string} minPlanKey - 'free', 'pro', 'business'
+ * @param {string} minPlanKey - ex: "start", "pro", "business"
  */
 function requirePlan(minPlanKey) {
   return async (req, res, next) => {
     try {
-      // req.companyId e req.company são populados pelo authMiddleware
       if (!req.company || !req.company.client_id) {
-         // Fallback se authMiddleware não tiver rodado (embora deva rodar antes)
-         throw new AppError('Authentication context missing', 500);
-      }
-      
-      const subscription = await companyService.getActivePlan(req.company.client_id);
-      
-      if (!subscription) {
-        throw new AppError('No active plan found', 403, { code: 'NO_PLAN' });
+        throw new AppError("Authentication context missing", 500);
       }
 
-      // Verifica hierarquia
+      const subscription = await companyService.getActivePlan(req.company.client_id);
+
+      if (!subscription) {
+        throw new AppError("No active plan found", 403, { code: "NO_PLAN" });
+      }
+
       if (!isPlanAtLeast(subscription.plan, minPlanKey)) {
-        throw new AppError(`Plan ${minPlanKey} required. Current: ${subscription.plan}`, 403, { 
-          code: 'UPGRADE_REQUIRED',
+        throw new AppError(`Plan ${minPlanKey} required. Current: ${subscription.plan}`, 403, {
+          code: "UPGRADE_REQUIRED",
           currentPlan: subscription.plan,
           requiredPlan: minPlanKey,
-          action: 'upgrade_plan'
+          action: "upgrade_plan"
         });
       }
 
-      // Injeta info do plano na requisição para uso posterior
       req.plan = subscription;
       next();
     } catch (error) {
@@ -41,51 +37,83 @@ function requirePlan(minPlanKey) {
   };
 }
 
+/* __AUTOATENDE_C11A_R2B_AGENT_LIMIT_HARDENING_FIX__ */
+function resolveAgentLimitFromSubscription(subscription) {
+  const rawPlan = String(subscription?.plan || "").trim();
+
+  const commercial = getCommercialPlanByAnyKey(rawPlan);
+  if (commercial?.included?.agents != null) {
+    return {
+      agentLimit: Number(commercial.included.agents) || 1,
+      resolvedPlanKey: commercial.key || rawPlan || "starter",
+      resolutionSource: "commercial_catalog"
+    };
+  }
+
+  const legacyPlan = getPlanByName(rawPlan);
+  if (legacyPlan?.limits?.agents != null) {
+    return {
+      agentLimit: Number(legacyPlan.limits.agents) || 1,
+      resolvedPlanKey: legacyPlan.key || rawPlan || "starter",
+      resolutionSource: "legacy_plan"
+    };
+  }
+
+  return {
+    agentLimit: Number(PLANS.STARTER?.limits?.agents || 1),
+    resolvedPlanKey: "starter",
+    resolutionSource: "starter_fallback"
+  };
+}
+
 /**
- * Middleware para verificar limites de recursos que NÃO são consumo (ex: Agentes)
- * Consumo (conversas/templates) é verificado no usage.service.js
+ * Middleware para verificar limites de recursos que NÃO são consumo
+ * Ex.: agentes/usuários internos
  */
 async function checkResourceLimit(req, res, next) {
   try {
-    // Apenas verifica se a rota é de criação de agente/usuário
-    // Assumindo que a rota é POST /users ou POST /agents
-    if (req.method === 'POST' && (req.path.includes('/users') || req.path.includes('/agents'))) {
+    if (req.method === "POST" && (req.path.includes("/users") || req.path.includes("/agents"))) {
       const companyId = req.companyId;
-      if (!companyId) throw new AppError('Company context missing', 500);
+      if (!companyId) throw new AppError("Company context missing", 500);
 
       const subscription = await companyService.getActivePlan(req.company.client_id);
-      
+
       if (!subscription) {
-        throw new AppError('No active plan found', 403);
+        throw new AppError("No active plan found", 403);
       }
 
-      // Mapeia o nome do plano do DB para a config local para pegar o limite de agentes
-      // O DB retorna { plan: 'Pro', ... }. A config usa keys 'start', 'pro', 'business'.
-      const planConfig = Object.values(PLANS).find(p => p.name.toLowerCase() === subscription.plan.toLowerCase()) || PLANS.START;
-      const agentLimit = planConfig.limits.agents;
+      const {
+          agentLimit,
+          resolvedPlanKey,
+          resolutionSource
+        } = resolveAgentLimitFromSubscription(subscription);
 
-      // Conta agentes atuais
       const { count, error } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .eq('company_id', companyId);
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .neq("role", "company");
 
       if (error) {
-        console.error('Error counting agents:', error);
-        throw new AppError('Internal error checking limits', 500);
+        console.error("Error counting agents:", error);
+        throw new AppError("Internal error checking limits", 500);
       }
 
-      if (count >= agentLimit) {
-        throw new AppError(`Agent limit reached for plan ${subscription.plan}`, 403, {
-          code: 'LIMIT_EXCEEDED',
-          resource: 'agents',
-          limit: agentLimit,
-          current: count,
-          action: 'upgrade_plan'
-        });
-      }
+      if ((count || 0) >= agentLimit) {
+          throw new AppError("Limite de agentes do plano atingido", 409, {
+            code: "AGENT_LIMIT_EXCEEDED",
+            resource: "agents",
+            limit: agentLimit,
+            current: count || 0,
+            plan: subscription.plan,
+            resolvedPlanKey,
+            resolutionSource,
+            action: "upgrade_plan",
+            userMessage: `Seu plano atual permite até ${agentLimit} agente(s). Faça upgrade para adicionar mais usuários internos.`
+          });
+        }
     }
-    
+
     next();
   } catch (error) {
     next(error);

@@ -11,6 +11,25 @@ const OnboardingModal = () => {
   const [planData, setPlanData] = useState(null);
   const { session, user } = useAuth();
 
+  const fetchPlanData = React.useCallback(async () => {
+    try {
+      const response = await fetch('/api/billing/status', {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      setPlanData(data);
+    } catch (error) {
+      console.error('Erro ao carregar plano para onboarding:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.access_token]);
+
   useEffect(() => {
     if (user && !analytics.initialized) {
       analytics.init(user);
@@ -30,26 +49,7 @@ const OnboardingModal = () => {
     } else {
         setLoading(false);
     }
-  }, [user]);
-
-  const fetchPlanData = async () => {
-    try {
-      const response = await fetch('/api/billing/status', {
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      });
-      
-      if (!response.ok) return;
-
-      const data = await response.json();
-      setPlanData(data);
-    } catch (error) {
-      console.error('Erro ao carregar plano para onboarding:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchPlanData, user]);
 
   const handleFinish = async () => {
     localStorage.setItem('autoatende_onboarding_completed', 'true');
@@ -93,7 +93,7 @@ const OnboardingModal = () => {
               </button>
             </div>
             <h2 className="text-2xl font-bold">
-              {step === 1 && "Bem-vindo ao AutoAtende AI! 🚀"}
+              {step === 1 && "Bem-vindo ao AutoAtendeAI! 🚀"}
               {step === 2 && "Conheça seu Plano 💎"}
               {step === 3 && "Dicas Importantes 💡"}
             </h2>
@@ -188,7 +188,7 @@ const OnboardingModal = () => {
                 <div>
                   <h3 className="font-bold text-green-800">Tudo Pronto!</h3>
                   <p className="text-sm text-green-700 mt-1">
-                    Você já pode começar a usar o AutoAtende AI. Se precisar de mais recursos, basta fazer upgrade no menu "Meu Plano".
+                    Você já pode começar a usar o AutoAtendeAI. Se precisar de mais recursos, basta fazer upgrade no menu "Meu Plano".
                   </p>
                 </div>
               </div>

@@ -1,0 +1,14 @@
+<svg width="248" height="48" viewBox="0 0 248 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AutoAtendeAI">
+  <rect x="1" y="1" width="46" height="46" rx="16" fill="url(#g)" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+  <path d="M15 31.2V18.8C15 16.7 16.7 15 18.8 15H29.2C31.3 15 33 16.7 33 18.8V25.6C33 27.7 31.3 29.4 29.2 29.4H22.5L16.7 34.1C16 34.7 15 34.2 15 33.3V31.2Z" fill="#03120A"/>
+  <path d="M20.2 20.9H28.1" stroke="#A8F7CA" stroke-width="2" stroke-linecap="round"/>
+  <path d="M20.2 25H25.8" stroke="#A8F7CA" stroke-width="2" stroke-linecap="round"/>
+  <text x="60" y="30" fill="#F5F8F6" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="800" letter-spacing="-0.8">AutoAtendeAI</text>
+  <defs>
+    <linearGradient id="g" x1="4" y1="3" x2="45" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A8F7CA"/>
+      <stop offset=".38" stop-color="#28D77C"/>
+      <stop offset="1" stop-color="#0C7C48"/>
+    </linearGradient>
+  </defs>
+</svg>

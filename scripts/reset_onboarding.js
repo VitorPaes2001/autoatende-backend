@@ -3,17 +3,27 @@ require('dotenv').config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const RESET_ONBOARDING_EMAIL = String(process.env.AUTOATENDE_RESET_ONBOARDING_EMAIL || '').trim();
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('❌ Missing Supabase service role credentials in .env');
+const requiredConfiguration = [
+  ['SUPABASE_URL', SUPABASE_URL],
+  ['SUPABASE_SERVICE_ROLE_KEY', SUPABASE_SERVICE_ROLE_KEY],
+  ['AUTOATENDE_RESET_ONBOARDING_EMAIL', RESET_ONBOARDING_EMAIL],
+];
+const missingConfiguration = requiredConfiguration
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (missingConfiguration.length > 0) {
+  console.error('Missing required environment configuration: ' + missingConfiguration.join(', '));
   process.exit(1);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function resetOnboarding() {
-  const email = 'vitor.escocard@gmail.com';
-  console.log(`🔄 Resetting onboarding for ${email}...`);
+  const email = RESET_ONBOARDING_EMAIL;
+  console.log('🔄 Resetting onboarding for configured account...');
 
   // 1. Get User ID
   const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
