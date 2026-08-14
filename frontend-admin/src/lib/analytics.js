@@ -45,7 +45,7 @@ class AnalyticsService {
 
   // Helper interno para logs do serviço
   log(...args) {
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('[AnalyticsService]', ...args);
     }
   }

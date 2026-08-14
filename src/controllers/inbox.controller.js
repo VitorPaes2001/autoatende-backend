@@ -1,6 +1,44 @@
 const apiResponse = require('../utils/apiResponse');
 const inboxService = require('../services/inbox.service');
 
+
+/* __AUTOATENDE_C4A2A_OWNER_BIND__ */
+function resolveAuthenticatedUserId(req) {
+  return (
+    req?.user?.id ||
+    req?.userId ||
+    req?.auth?.userId ||
+    req?.auth?.id ||
+    null
+  );
+}
+
+function bindAuthenticatedOwnerOnBody(req) {
+  const authenticatedUserId = resolveAuthenticatedUserId(req);
+  if (!authenticatedUserId) return null;
+
+  req.body = { ...(req.body || {}) };
+
+  const shouldBindAuthenticatedOwner =
+    !req.body.agent_id ||
+    req.body.agent_id === 'agent_default' ||
+    req.body.agent_id === 'authenticated_user';
+
+  if (!shouldBindAuthenticatedOwner) {
+    return authenticatedUserId;
+  }
+
+  req.body.assigned_user_id =
+    req.body.assigned_user_id ||
+    req.body.user_id ||
+    req.body.owner_user_id ||
+    authenticatedUserId;
+
+  req.body.agent_id = authenticatedUserId;
+
+  return authenticatedUserId;
+}
+
 async function getConversations(req, res, next) {
   try {
     const companyId = req.companyId;
@@ -56,6 +94,8 @@ async function sendMessage(req, res, next) {
 }
 
 async function assignConversation(req, res, next) {
+  // __AUTOATENDE_C4A2A_INBOX_assignConversation__
+  const authenticatedUserId = bindAuthenticatedOwnerOnBody(req);
   try {
     const companyId = req.companyId;
     if (!companyId) {

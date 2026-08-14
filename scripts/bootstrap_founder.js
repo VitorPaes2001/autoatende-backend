@@ -6,11 +6,23 @@ const { v4: uuidv4 } = require('uuid');
 // Config
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const FOUNDER_EMAIL = 'vitor.escocard@gmail.com';
-const FOUNDER_PASSWORD = 'TemporaryPassword123!';
+const FOUNDER_EMAIL = String(process.env.AUTOATENDE_BOOTSTRAP_FOUNDER_EMAIL || '').trim();
+const FOUNDER_PASSWORD = String(process.env.AUTOATENDE_BOOTSTRAP_FOUNDER_PASSWORD || '');
+const FOUNDER_NAME = String(process.env.AUTOATENDE_BOOTSTRAP_FOUNDER_NAME || '').trim();
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+const requiredConfiguration = [
+  ['SUPABASE_URL', SUPABASE_URL],
+  ['SUPABASE_SERVICE_ROLE_KEY', SUPABASE_SERVICE_KEY],
+  ['AUTOATENDE_BOOTSTRAP_FOUNDER_EMAIL', FOUNDER_EMAIL],
+  ['AUTOATENDE_BOOTSTRAP_FOUNDER_PASSWORD', FOUNDER_PASSWORD],
+  ['AUTOATENDE_BOOTSTRAP_FOUNDER_NAME', FOUNDER_NAME],
+];
+const missingConfiguration = requiredConfiguration
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+
+if (missingConfiguration.length > 0) {
+  console.error('Missing required environment configuration: ' + missingConfiguration.join(', '));
   process.exit(1);
 }
 
@@ -20,7 +32,7 @@ async function bootstrap() {
   console.log('🚀 Bootstrapping First Client...');
 
   // 1. Get or Create Auth User
-  console.log(`Checking user ${FOUNDER_EMAIL}...`);
+  console.log("Founder email configured; checking user...");
   let { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
   let user = users.find(u => u.email === FOUNDER_EMAIL);
 
@@ -31,7 +43,7 @@ async function bootstrap() {
       password: FOUNDER_PASSWORD,
       email_confirm: true,
       user_metadata: {
-        name: 'Vitor Escocard',
+        name: FOUNDER_NAME,
         role: 'company',
         onboarding_completed: false // Force false as requested
       }
@@ -45,7 +57,7 @@ async function bootstrap() {
     await supabase.auth.admin.updateUserById(user.id, {
       user_metadata: {
         ...user.user_metadata,
-        name: 'Vitor Escocard',
+        name: FOUNDER_NAME,
         role: 'company',
         onboarding_completed: false
       }
@@ -65,7 +77,7 @@ async function bootstrap() {
     const clientData = {
       id: user.id,
       user_id: user.id,
-      name: 'Vitor Escocard',
+      name: FOUNDER_NAME,
       email: FOUNDER_EMAIL,
       status: 'active'
     };
@@ -238,8 +250,8 @@ async function bootstrap() {
   }
 
   console.log('✅ Bootstrap Complete!');
-  console.log(`User: ${FOUNDER_EMAIL}`);
-  console.log(`Password: ${FOUNDER_PASSWORD}`);
+  console.log("Founder authentication configured for configured account");
+  console.log('Founder authentication configured: yes');
   console.log('⚠️ NOTE: If you saw schema warnings, please run migrations/002_bootstrap_company_schema.sql manually.');
 }
 
